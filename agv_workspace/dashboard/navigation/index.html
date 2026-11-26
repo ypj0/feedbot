@@ -397,7 +397,7 @@ async function poll(){
       else if(st==='charging'){$('action').textContent='回充成功，充电中';}
     }
     lastStatus=st;lastNavError=current.nav_error||null;
-    if(st==='succeeded'||st==='charging'||st==='aborted'||st==='cancelled')previewPath=null;
+    if(st==='succeeded'||st==='aborted'||st==='cancelled')previewPath=null;
   }catch(e){
     $('connDot').classList.remove('on');$('connText').textContent='连接中断';
   }
