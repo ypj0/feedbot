@@ -63,7 +63,7 @@ class ChargeDockNode(Node):
         self.declare_parameter('charge_timeout', 180.0)
         self.declare_parameter('controller_frequency', 20.0)
         self.declare_parameter('undock_distance', 0.2)
-        self.declare_parameter('undock_speed', 0.08)
+        self.declare_parameter('undock_speed', 0.15)
         self.declare_parameter('undock_max_distance', 0.6)
         self.declare_parameter('search_timeout', 30.0)
         self.declare_parameter('search_rotate_speed', 0.3)

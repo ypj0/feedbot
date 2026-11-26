@@ -248,12 +248,12 @@ public:
                 status.left_alarm == 0 && status.right_alarm == 0 && status.shutdown == 0,
                 "nonzero command blocked by safety status");
             // 充电状态只是“运动抑制”，不是故障：非脱桩模式静默清零，
-            // 脱桩/入桩模式仅允许低速 ±0.10 m/s，超范围同样清零。
+            // 脱桩/入桩模式允许低速 ±0.20 m/s（原厂出桩约 0.15 m/s），超范围清零。
             // 关键：不因此抛异常，保持串口通信、里程计和诊断持续更新。
             if (status.charge != 0) {
                 const double linear = Wheels::radius * (left_radps + right_radps) / 2.0;
                 const bool allowed =
-                    allow_charge_motion && linear >= -0.10 && linear <= 0.10;
+                    allow_charge_motion && linear >= -0.20 && linear <= 0.20;
                 if (!allowed) {
                     left_radps = 0.0;
                     right_radps = 0.0;
