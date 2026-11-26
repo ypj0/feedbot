@@ -24,7 +24,7 @@ def generate_launch_description():
                 "-load_state_filename", LaunchConfiguration("load_state_filename"),
             ],
             remappings=[
-                ("scan", "/cartographer/scan"),
+                ("scan", "/scan"),
                 ("odom", "/odometry/filtered"),
             ],
             output="screen",
@@ -37,10 +37,6 @@ def generate_launch_description():
                 {"use_sim_time": False},
                 {"resolution": 0.05},
             ],
-            output="screen",
-        ),
-        ExecuteProcess(
-            cmd=["python3", "-B", str(Path(__file__).parent.parent / "scan_time_relay.py")],
             output="screen",
         ),
     ])

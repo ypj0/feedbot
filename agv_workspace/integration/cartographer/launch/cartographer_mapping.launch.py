@@ -19,7 +19,7 @@ def generate_launch_description():
                 "-start_trajectory_with_default_topics=false",
             ],
             remappings=[
-                ("scan", "/cartographer/scan"),
+                ("scan", "/scan"),
                 ("odom", "/odometry/filtered"),
             ],
             output="screen",
@@ -36,10 +36,6 @@ def generate_launch_description():
         ),
         ExecuteProcess(
             cmd=["python3", "-B", str(Path(__file__).parent.parent / "cartographer_web_api.py")],
-            output="screen",
-        ),
-        ExecuteProcess(
-            cmd=["python3", "-B", str(Path(__file__).parent.parent / "scan_time_relay.py")],
             output="screen",
         ),
     ])
