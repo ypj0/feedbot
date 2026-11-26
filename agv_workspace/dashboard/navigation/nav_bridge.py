@@ -81,6 +81,7 @@ class State:
         self.status = 'idle'  # idle / previewing / navigating / succeeded / aborted / cancelled / docking_nav / docking
         self.dock = None
         self.pre_dock = None
+        self.docked_pose = None
         self.mapping = False
         self.mapping_saved = None
         self.current_map = None
@@ -109,6 +110,7 @@ class State:
                         pose=self.pose, plan=self.plan, local_plan=self.local_plan,
                         goal=self.goal, status=self.status, nav_error=self.nav_error,
                         dock=self.dock, pre_dock=self.pre_dock,
+                        docked_pose=self.docked_pose,
                         diag=self.diag, scan=self.scan, footprint=FOOTPRINT,
                         mapping=self.mapping, mapping_saved=self.mapping_saved,
                         current_map=self.current_map)
@@ -138,6 +140,7 @@ class NavNode(Node):
             Trigger, '/charge_dock/calibrate_docked')
         self.dock_get_client = self.create_client(Trigger, '/charge_dock/get_dock')
         self.dock_reload_client = self.create_client(Trigger, '/charge_dock/reload')
+        self.load_dock_state()
         self.relocalize_client = self.create_client(Trigger, '/relocalize')
         self.load_map_client = self.create_client(LoadMap, '/map_server/load_map')
         self.dock_nav_active = False
@@ -496,6 +499,20 @@ class NavNode(Node):
         self.state.set('mapping', False)
         return {'ok': True, 'mapping': False}
 
+    def load_dock_state(self):
+        path = os.path.join(MAPS_ROOT, 'charge_dock_config.json')
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+        except Exception:
+            return
+        for key in ('dock', 'pre_dock', 'docked_pose'):
+            value = cfg.get(key)
+            if value and all(k in value for k in ('x', 'y', 'yaw')):
+                self.state.set(key, {'x': float(value['x']),
+                                     'y': float(value['y']),
+                                     'yaw': float(value['yaw'])})
+
     def dock_get(self):
         ok, msg = self.call_trigger(self.dock_get_client)
         return json.loads(msg)
@@ -520,6 +537,7 @@ class NavNode(Node):
                           service_name='dock reload')
         self.state.set('dock', info['dock'])
         self.state.set('pre_dock', info['pre_dock'])
+        self.state.set('docked_pose', None)
         return {'dock': info['dock'], 'pre_dock': info['pre_dock'],
                 'template_points': len(info.get('template', {}).get('points', []))}
 
@@ -543,6 +561,7 @@ class NavNode(Node):
         os.replace(tmp, path)
         self.call_trigger(self.dock_reload_client, timeout=5.0,
                           service_name='dock reload')
+        self.state.set('docked_pose', info['docked_pose'])
         return {'docked_pose': info['docked_pose']}
 
     def dock_undock(self):
