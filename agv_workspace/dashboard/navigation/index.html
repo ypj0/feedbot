@@ -151,6 +151,7 @@ canvas{display:block;width:100%;height:100%}
 const canvas=document.getElementById('map');
 const ctx=canvas.getContext('2d');
 let savedMap=null,current=null,goal=null,previewPath=null,tab=0,dragging=false;
+let lastStatus=null,lastNavError=null;
 const FOOT=[[-0.325,-0.275],[0.325,-0.275],[0.325,0.275],[-0.325,0.275]];
 const VIEW=1.8;
 function $(id){return document.getElementById(id)}
@@ -390,9 +391,12 @@ async function poll(){
     const st=current.status||'idle';
     $('statusBadge').textContent=st;
     $('statusBadge').className='badge '+((st==='succeeded'||st==='charging')?'suc':(st==='navigating'?'nav':(st==='aborted'?'err':'')));
-    if(current.nav_error){$('action').textContent=current.nav_error;}
-    else if(st==='succeeded'){$('action').textContent='导航成功';}
-    else if(st==='charging'){$('action').textContent='回充成功，充电中';}
+    if(current.nav_error&&current.nav_error!==lastNavError){$('action').textContent=current.nav_error;}
+    else if(!current.nav_error&&st!==lastStatus){
+      if(st==='succeeded'){$('action').textContent='导航成功';}
+      else if(st==='charging'){$('action').textContent='回充成功，充电中';}
+    }
+    lastStatus=st;lastNavError=current.nav_error||null;
     if(st==='succeeded'||st==='charging'||st==='aborted'||st==='cancelled')previewPath=null;
   }catch(e){
     $('connDot').classList.remove('on');$('connText').textContent='连接中断';
