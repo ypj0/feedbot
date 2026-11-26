@@ -145,6 +145,8 @@ class NavNode(Node):
         self.load_map_client = self.create_client(LoadMap, '/map_server/load_map')
         self.dock_nav_active = False
         self.dock_start_future = None
+        self.charge_status = 0
+        self.power = None
         self.auto_charge = True
         self.auto_charge_triggered = False
         self.dock_status_at = 0
@@ -183,8 +185,20 @@ class NavNode(Node):
             name = s.name
             if 'chassis' in name or 'ltr2' in name or 'imu' in name.lower():
                 level = s.level[0] if isinstance(s.level, (bytes, bytearray)) else int(s.level)
+                values = {v.key: v.value for v in s.values}
                 diag[name] = dict(level=level, message=s.message,
-                                  values={v.key: v.value for v in s.values})
+                                  values=values)
+                if 'chassis' in name:
+                    if 'charge' in values:
+                        try:
+                            self.charge_status = int(float(values['charge']))
+                        except Exception:
+                            pass
+                    if 'power' in values:
+                        try:
+                            self.power = int(float(values['power']))
+                        except Exception:
+                            pass
         self.state.set('diag', diag)
 
     def map_cb(self, msg):
@@ -703,6 +717,21 @@ class NavNode(Node):
             self.state.set('status', 'aborted')
             self.state.set('nav_error', '回充失败: %s' % info.get('failure_reason', ''))
 
+    def charge_status_tick(self):
+        """以 MCU 充电状态为准刷新 UI 状态（重启后也能正确显示充电中）。"""
+        charge = getattr(self, 'charge_status', 0)
+        status = self.state.status
+        if charge > 0:
+            if status in ('navigating', 'undocking'):
+                return
+            if status != 'charging':
+                self.state.set('status', 'charging')
+                self.state.set('nav_error', None)
+        else:
+            if status == 'charging':
+                self.state.set('status', 'idle')
+                self.state.set('nav_error', None)
+
     def preview(self, x, y, yaw_goal):
         if not self.path_client.wait_for_server(timeout_sec=5):
             raise RuntimeError('planner not available')
@@ -770,6 +799,7 @@ class NavNode(Node):
             pass
         self.tick_nav()
         self.dock_tick()
+        self.charge_status_tick()
         self.dock_status_tick()
         self.auto_charge_tick()
         self.auto_reloc_check()
