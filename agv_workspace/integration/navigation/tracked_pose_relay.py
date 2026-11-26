@@ -2,7 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 
 
@@ -10,9 +10,10 @@ class TrackedPoseRelay(Node):
     def __init__(self):
         super().__init__("tracked_pose_relay")
         retained = QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        reliable = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
         self.publisher = self.create_publisher(PoseWithCovarianceStamped, "/amcl_pose", retained)
         self.subscription = self.create_subscription(
-            PoseStamped, "/tracked_pose", self.callback, qos_profile_sensor_data)
+            PoseStamped, "/tracked_pose", self.callback, reliable)
 
     def callback(self, message):
         output = PoseWithCovarianceStamped()

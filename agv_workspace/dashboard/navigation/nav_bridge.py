@@ -207,43 +207,6 @@ class NavNode(Node):
             width=m.info.width, height=m.info.height, resolution=m.info.resolution,
             origin=[m.info.origin.position.x, m.info.origin.position.y],
             data=[int(v) for v in m.data]))
-        # 读原始 PGM 和编辑 PGM，计算空气墙差异
-        def read_pgm(path):
-            raw = open(path, 'rb').read()
-            toks = []; idx = 0
-            while len(toks) < 4:
-                while idx < len(raw) and raw[idx:idx+1] in b' \t\r\n': idx += 1
-                if raw[idx:idx+1] == b'#':
-                    while raw[idx] != 10: idx += 1
-                    continue
-                s2 = idx
-                while idx < len(raw) and raw[idx:idx+1] not in b' \t\r\n': idx += 1
-                toks.append(raw[s2:idx].decode())
-            magic, w, h, mx = toks
-            w, h, mx = int(w), int(h), int(mx)
-            idx += 1
-            return w, h, [b for b in raw[idx:idx+w*h]]
-        # PGM 像素 -> occupancy: 254=free(0), 0=occ(100), else unknown(-1)
-        def to_occ(v):
-            if v >= 250: return 0
-            if v <= 10: return 100
-            return -1
-        try:
-            rw, rh, rpix = read_pgm('/maps_raw/feedbot.pgm')
-            ew, eh, epix = read_pgm('/maps_edited/feedbot.pgm')
-            raw_occ = [to_occ(v) for v in rpix]
-            air = [0]*len(epix)
-            for i in range(len(epix)):
-                # 空气墙 = 编辑图是 occ 而原始图不是 occ
-                if to_occ(epix[i]) == 100 and raw_occ[i] != 100:
-                    air[i] = 1
-            ox, oy = m.info.origin.position.x, m.info.origin.position.y
-            self.state.set('raw_map', dict(width=rw, height=rh, resolution=0.05,
-                                           origin=[ox, oy], data=raw_occ))
-            self.state.set('airwall', dict(width=ew, height=eh,
-                                           origin=[ox, oy], data=air))
-        except Exception as e:
-            print('map file read failed:', e)
 
     def pose_cb(self, msg):
         p = msg.pose.pose

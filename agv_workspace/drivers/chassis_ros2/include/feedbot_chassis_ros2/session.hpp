@@ -266,16 +266,6 @@ public:
         else ++command_nonzero_count;
     }
 
-    void reinit_motor() {
-        feedbot_chassis::require_serial(!stopped_ && !output_failed_, "serial session not writable");
-        // 原厂 reinitMotor：帧字节 9 置 1，触发 MCU 0x139 动作，
-        // 通过 CAN SDO 重新使能左右电机驱动器（充电互锁释放）。
-        Frame frame = feedbot_chassis::kReviewedStationary;
-        frame[9] = 1;
-        feedbot_chassis::checksum(frame);
-        send(frame);
-    }
-
     void stop() {
         if (stopped_) return;
         stopped_ = true;
