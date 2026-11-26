@@ -31,7 +31,17 @@ controller_server:
     controller_plugins: ["FollowPath"]
 
     FollowPath:
-      plugin: "dwb_core::DWBLocalPlanner"
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "dwb_core::DWBLocalPlanner"
+      angular_dist_threshold: 0.35
+      angular_disengage_threshold: 0.10
+      forward_sampling_distance: 0.25
+      rotate_to_heading_angular_vel: 0.5
+      max_angular_accel: 1.0
+      max_cost_threshold: 254.0
+      simulate_ahead_time: 0.5
+      rotate_to_goal_heading: true
+      use_path_orientations: true
       debug_trajectory_details: false
       min_vel_x: 0.0
       min_vel_y: 0.0
@@ -100,9 +110,11 @@ planner_server:
       max_planning_time: 5.0
       smooth_path: true
       minimum_turning_radius: 0.1
+      motion_model_for_search: "REEDS_SHEPP"
+      reverse_penalty: 2.0
+      direction_change_penalty: 2.0
       analytic_expansion_ratio: 3.5
       analytic_expansion_max_length: 3.0
-      motion_model_for_search: "DUBIN"
       cost_penalty: 2.0
 
 global_costmap:
