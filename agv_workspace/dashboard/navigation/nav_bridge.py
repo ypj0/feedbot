@@ -270,7 +270,7 @@ class NavNode(Node):
         if not self.relocalize_client.wait_for_service(timeout_sec=2.0):
             raise RuntimeError('relocalize service not available')
         fut = self.relocalize_client.call_async(Trigger.Request())
-        deadline = time.time() + 12.0
+        deadline = time.time() + 30.0
         while time.time() < deadline:
             if fut.done():
                 ok, msg = fut.result().success, fut.result().message
