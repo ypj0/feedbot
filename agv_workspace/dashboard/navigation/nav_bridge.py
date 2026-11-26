@@ -331,27 +331,70 @@ class NavNode(Node):
                     maps.append({'name': entry})
         return {'maps': maps}
 
-    def maps_switch(self, name):
+    def load_static_map(self, name):
         name = re.sub(r'[^A-Za-z0-9._-]+', '_', (name or '').strip())
-        yaml_path = os.path.join(MAPS_ROOT, name, 'feedbot.yaml')
+        map_dir = os.path.join(MAPS_ROOT, name)
+        yaml_path = os.path.join(map_dir, 'feedbot.yaml')
         if not name or not os.path.exists(yaml_path):
             raise RuntimeError('地图不存在: ' + name)
-        if not self.load_map_client.wait_for_service(timeout_sec=5):
-            raise RuntimeError('map_server 未运行，无法切换地图')
-        request = LoadMap.Request()
-        request.map_url = yaml_path
-        future = self.load_map_client.call_async(request)
-        deadline = time.time() + 10
-        while not future.done() and time.time() < deadline:
-            time.sleep(0.02)
-        if not future.done():
-            raise RuntimeError('切换超时')
-        result = future.result()
-        if result.result != 0:
-            reasons = {1: '地图不存在', 2: '地图数据无效', 3: '地图元数据无效', 4: '未定义失败'}
-            raise RuntimeError('切换失败: ' + reasons.get(result.result, '错误码 %s' % result.result))
+        yaml_text = open(yaml_path, 'r').read()
+        resolution = 0.05
+        origin = [0.0, 0.0]
+        image = 'feedbot.pgm'
+        for line in yaml_text.splitlines():
+            line = line.split('#', 1)[0].strip()
+            if line.startswith('image:'):
+                image = line.split(':', 1)[1].strip()
+            elif line.startswith('resolution:'):
+                try:
+                    resolution = float(line.split(':', 1)[1].strip())
+                except ValueError:
+                    pass
+            elif line.startswith('origin:'):
+                try:
+                    body = line.split(':', 1)[1].strip().strip('[]')
+                    parts = [float(part) for part in body.split(',')[:2]]
+                    origin = parts
+                except Exception:
+                    pass
+        image_path = os.path.join(map_dir, image)
+        if not os.path.isabs(image_path):
+            image_path = os.path.abspath(image_path)
+        if not os.path.exists(image_path):
+            raise RuntimeError('地图图片不存在: ' + image)
+        raw = open(image_path, 'rb').read()
+        tokens = []
+        index = 0
+        while len(tokens) < 4:
+            while index < len(raw) and raw[index:index + 1] in b' \t\r\n':
+                index += 1
+            if raw[index:index + 1] == b'#':
+                while raw[index] != 10:
+                    index += 1
+                continue
+            start = index
+            while index < len(raw) and raw[index:index + 1] not in b' \t\r\n':
+                index += 1
+            tokens.append(raw[start:index].decode())
+        magic, width, height, max_value = tokens[0], int(tokens[1]), int(tokens[2]), int(tokens[3])
+        index += 1
+        pixels = raw[index:index + width * height]
+
+        def pixel_to_occ(value):
+            if value >= 250:
+                return 0
+            if value <= 10:
+                return 100
+            return -1
+
+        self.state.set('map', dict(
+            width=width, height=height, resolution=resolution,
+            origin=[origin[0], origin[1]], data=[pixel_to_occ(v) for v in pixels]))
         self.state.set('current_map', name)
         return {'ok': True, 'name': name}
+
+    def maps_switch(self, name):
+        return self.load_static_map(name)
 
     def mapping_stop(self):
         self.cart_request('POST', '/finish')
