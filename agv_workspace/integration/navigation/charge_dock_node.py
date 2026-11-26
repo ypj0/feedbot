@@ -63,6 +63,7 @@ class ChargeDockNode(Node):
         self.declare_parameter('controller_frequency', 20.0)
         self.declare_parameter('undock_distance', 0.2)
         self.declare_parameter('undock_speed', 0.08)
+        self.declare_parameter('undock_max_distance', 0.6)
         self.declare_parameter('search_timeout', 30.0)
         self.declare_parameter('search_rotate_speed', 0.3)
         self.declare_parameter('icp_rms_threshold', 0.05)
@@ -80,6 +81,7 @@ class ChargeDockNode(Node):
         self.freq = self.get_parameter('controller_frequency').value
         self.undock_distance = self.get_parameter('undock_distance').value
         self.undock_speed = self.get_parameter('undock_speed').value
+        self.undock_max_distance = self.get_parameter('undock_max_distance').value
         self.search_timeout = self.get_parameter('search_timeout').value
         self.search_rotate_speed = self.get_parameter('search_rotate_speed').value
         self.icp_rms_threshold = self.get_parameter('icp_rms_threshold').value
@@ -118,6 +120,7 @@ class ChargeDockNode(Node):
         self.searching = False
         self.search_count = 0
         self.search_started_at = None
+        self.icp_attempted = False
         self.pose_correction = None
         self.final_start_pose = None
         self.final_start_odom = None
@@ -125,6 +128,7 @@ class ChargeDockNode(Node):
         self.searching = False
         self.search_count = 0
         self.search_started_at = None
+        self.icp_attempted = False
         self.pose_correction = None  # [dx, dy, dyaw] ICP 锁定后相对 amcl 的修正
         self.final_start_pose = None  # 进入最终入桩时的地图位姿
         self.final_start_odom = None  # 进入最终入桩时的里程计位姿
@@ -415,10 +419,10 @@ class ChargeDockNode(Node):
                     self.stop_motion()
                     self.get_logger().info('docking timeout')
                     return
-            # 有激光模板且尚未锁定：先按原厂搜索段找桩
-            if self.template is not None and self.pose_correction is None:
-                self.search_tick()
-                return
+            # 有激光模板：尝试一次 ICP 精定位；失败则退回 Cartographer
+            if self.template is not None and self.pose_correction is None \
+                    and not self.icp_attempted:
+                self.try_icp_once()
             robot = self.current_robot()
             if robot is None:
                 return
@@ -462,29 +466,13 @@ class ChargeDockNode(Node):
         return [self.docked_pose[0], self.docked_pose[1],
                 norm_angle(self.docked_pose[2] - math.pi)]
 
-    def search_tick(self):
-        """原厂搜索段：旋转并 ICP 匹配桩模板；锁定后给出相对 Cartographer 的修正。"""
-        if self.search_started_at is None:
-            self.search_started_at = self.get_clock().now()
-        dt = (self.get_clock().now() - self.search_started_at).nanoseconds / 1e9
-        if dt > self.search_timeout:
-            self.failed = True
-            self.failure_reason = 'dock search timeout'
-            self.active = False
-            self.stop_motion()
-            self.get_logger().info('dock search timeout')
-            return
-        self.search_count += 1
-        self.search_rotate()
-        # ICP 较重，降低到约 6.7Hz，旋转仍按 20Hz 输出
-        if self.search_count % 3 != 0:
-            return
+    def try_icp_once(self):
+        """导航到 pre_dock 后只做一次模板 ICP 精定位，不旋转找桩。"""
+        self.icp_attempted = True
         if self.scan is None or self.robot is None:
-            self.publish_cmd(0.0, 0.0)
             return
         current = scan_front_points(self.scan)
         if current.shape[0] < 20:
-            self.publish_cmd(0.0, 0.0)
             return
         theta, tx, ty, rms, inliers = icp_align(self.template, current)
         if rms < self.icp_rms_threshold and inliers > self.icp_inlier_ratio:
@@ -494,40 +482,35 @@ class ChargeDockNode(Node):
                 refined[1] - self.robot[1],
                 norm_angle(refined[2] - self.robot[2]),
             ]
-            self.searching = False
-            self.stop_motion()
             self.get_logger().info(
                 'dock template locked: rms=%.4f inliers=%.2f correction=%s'
                 % (rms, inliers, self.pose_correction))
-            return
-
-    def search_rotate(self):
-        """原厂 foundChargePoint 计数规律的左右扫描角速度。"""
-        self.searching = True
-        c = self.search_count
-        if c <= 149 or (c > 449 and c <= 749):
-            w = -self.search_rotate_speed
         else:
-            if c > 749:
-                c = 150
-                self.search_count = 150
-            w = self.search_rotate_speed
-        self.publish_cmd(0.0, w)
+            self.get_logger().info(
+                'dock template ICP not locked (rms=%.4f inliers=%.2f), '
+                'fall back to cartographer pose' % (rms, inliers))
 
     def undock_tick(self):
-        """脱桩：前进离开桩，直到移动 undock_distance 米。"""
+        """脱桩：前进离开桩，直到充电解除且离开足够距离，或达到最大距离。"""
         if self.robot is None:
             self.stop_motion()
             return
         if self.undock_start is None:
             self.undock_start = list(self.robot)
-        dx = self.robot[0] - self.undock_start[0]
-        dy = self.robot[1] - self.undock_start[1]
-        moved = math.hypot(dx, dy)
-        if moved >= self.undock_distance:
+        moved = math.hypot(self.robot[0] - self.undock_start[0],
+                           self.robot[1] - self.undock_start[1])
+        if self.charge_status == 0 and moved >= self.undock_distance:
             self.undocking = False
             self.stop_motion()
-            self.get_logger().info('undocking done, moved %.3f m' % moved)
+            self.get_logger().info(
+                'undocking done, charge cleared, moved %.3f m' % moved)
+            return
+        if moved >= self.undock_max_distance:
+            self.undocking = False
+            self.stop_motion()
+            self.get_logger().warn(
+                'undocking stopped at max distance %.3f m, charge=%d'
+                % (moved, self.charge_status))
             return
         # 低速前进（正线速度）
         self.undock_lin = min(self.undock_lin + 0.02, self.undock_speed)
