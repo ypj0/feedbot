@@ -460,9 +460,9 @@ class NavNode(Node):
         pixels = raw[index:index + width * height]
 
         def pixel_to_occ(value):
-            if value >= 250:
+            if value >= 205:
                 return 0
-            if value <= 10:
+            if value <= 89:
                 return 100
             return -1
 
