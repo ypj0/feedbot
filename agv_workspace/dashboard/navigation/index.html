@@ -216,7 +216,7 @@ function drawCells(T,w,h){
   for(let gy=gy0;gy<=gy1;gy++){
     for(let gx=gx0;gx<=gx1;gx++){
       const v=map.data[gy*map.width+gx];
-      ctx.fillStyle=v<0?'#b9c4cf':(v>=50?'#2a3540':'#f4f8fb');
+      ctx.fillStyle=v<0?'#b9c4cf':(v>=65?'#2a3540':'#f4f8fb');
       const x0=T.px(map.origin[0]+gx*map.resolution);
       const x1=T.px(map.origin[0]+(gx+1)*map.resolution);
       const y0=T.py(map.origin[1]+(gy+1)*map.resolution);
