@@ -261,8 +261,8 @@ private:
     static constexpr uint64_t maximum_frame_duration_microseconds_ = 200000U;
     static constexpr uint32_t maximum_interframe_device_delta_microseconds_ = 153600000U;
     static constexpr float range_unit_metres_ = 0.002F;
-    static constexpr int crop_low_offset_ = -1024;
-    static constexpr int crop_high_offset_ = 1023;
+    static constexpr int crop_low_offset_ = -537;
+    static constexpr int crop_high_offset_ = 537;
     static constexpr std::size_t crop_start_index_ = static_cast<std::size_t>(
         static_cast<int>(beam_count_ / 2U) + crop_low_offset_);
     static constexpr std::size_t crop_end_index_ = static_cast<std::size_t>(
