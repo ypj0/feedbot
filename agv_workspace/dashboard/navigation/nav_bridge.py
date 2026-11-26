@@ -144,6 +144,7 @@ class NavNode(Node):
         self.dock_start_future = None
         self.auto_charge = True
         self.auto_charge_triggered = False
+        self.dock_status_at = 0
         self.route_active = False
         self.route_points = []
         self.route_index = 0
@@ -665,6 +666,24 @@ class NavNode(Node):
             except Exception as e:
                 self.state.set('nav_error', 'auto charge failed: %s' % e)
 
+    def dock_status_tick(self):
+        if self.state.status != 'docking':
+            return
+        now = time.time()
+        if now - self.dock_status_at < 1.0:
+            return
+        self.dock_status_at = now
+        try:
+            info = self.dock_get()
+        except Exception:
+            return
+        if info.get('charging'):
+            self.state.set('status', 'charging')
+            self.state.set('nav_error', None)
+        elif info.get('failed'):
+            self.state.set('status', 'aborted')
+            self.state.set('nav_error', '回充失败: %s' % info.get('failure_reason', ''))
+
     def preview(self, x, y, yaw_goal):
         if not self.path_client.wait_for_server(timeout_sec=5):
             raise RuntimeError('planner not available')
@@ -732,6 +751,7 @@ class NavNode(Node):
             pass
         self.tick_nav()
         self.dock_tick()
+        self.dock_status_tick()
         self.auto_charge_tick()
         self.auto_reloc_check()
 

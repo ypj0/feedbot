@@ -378,10 +378,11 @@ async function poll(){
     renderStatus();
     const st=current.status||'idle';
     $('statusBadge').textContent=st;
-    $('statusBadge').className='badge '+(st==='succeeded'?'suc':(st==='navigating'?'nav':(st==='aborted'?'err':'')));
-    if(current.nav_error){$('action').textContent='导航失败：'+current.nav_error;}
+    $('statusBadge').className='badge '+((st==='succeeded'||st==='charging')?'suc':(st==='navigating'?'nav':(st==='aborted'?'err':'')));
+    if(current.nav_error){$('action').textContent=current.nav_error;}
     else if(st==='succeeded'){$('action').textContent='导航成功';}
-    if(st==='succeeded'||st==='aborted'||st==='cancelled')previewPath=null;
+    else if(st==='charging'){$('action').textContent='回充成功，充电中';}
+    if(st==='succeeded'||st==='charging'||st==='aborted'||st==='cancelled')previewPath=null;
   }catch(e){
     $('connDot').classList.remove('on');$('connText').textContent='连接中断';
   }

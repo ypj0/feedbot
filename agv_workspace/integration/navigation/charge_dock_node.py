@@ -59,6 +59,7 @@ class ChargeDockNode(Node):
         self.declare_parameter('chargedis_threshold', 0.4)
         self.declare_parameter('abort_threshold', 0.07)
         self.declare_parameter('abort_distance', 0.5)
+        self.declare_parameter('final_stall_ticks', 120)
         self.declare_parameter('charge_timeout', 180.0)
         self.declare_parameter('controller_frequency', 20.0)
         self.declare_parameter('undock_distance', 0.2)
@@ -77,6 +78,7 @@ class ChargeDockNode(Node):
         self.chargedis_threshold = self.get_parameter('chargedis_threshold').value
         self.abort_threshold = self.get_parameter('abort_threshold').value
         self.abort_distance = self.get_parameter('abort_distance').value
+        self.final_stall_ticks = self.get_parameter('final_stall_ticks').value
         self.charge_timeout = self.get_parameter('charge_timeout').value
         self.freq = self.get_parameter('controller_frequency').value
         self.undock_distance = self.get_parameter('undock_distance').value
@@ -594,7 +596,7 @@ class ChargeDockNode(Node):
             self.distance_baseline = distance
             return True
         self.progress_count += 1
-        return self.progress_count <= 20
+        return self.progress_count <= self.final_stall_ticks
 
     def final_slice(self, error, distance, reverse):
         if reverse:
