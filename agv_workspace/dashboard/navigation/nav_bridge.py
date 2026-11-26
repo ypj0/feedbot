@@ -85,6 +85,7 @@ class State:
         self.pre_dock = None
         self.mapping = False
         self.mapping_saved = None
+        self.current_map = None
 
     def add_listener(self, fn):
         with self.lock:
@@ -111,7 +112,8 @@ class State:
                         goal=self.goal, status=self.status, nav_error=self.nav_error,
                         dock=self.dock, pre_dock=self.pre_dock,
                         diag=self.diag, scan=self.scan, footprint=FOOTPRINT,
-                        mapping=self.mapping, mapping_saved=self.mapping_saved)
+                        mapping=self.mapping, mapping_saved=self.mapping_saved,
+                        current_map=self.current_map)
 
 
 class NavNode(Node):

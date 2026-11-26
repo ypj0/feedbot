@@ -324,7 +324,7 @@ function renderStatus(){
   $('poseX').textContent=p?p.x.toFixed(2):'-';
   $('poseY').textContent=p?p.y.toFixed(2):'-';
   $('poseYaw').textContent=p?(p.yaw*180/Math.PI).toFixed(0)+'°':'-';
-  const nav=[['状态',current.status||'idle'],['建图',current.mapping?'进行中':'未启动'],['导航错误',current.nav_error||'-'],['路径点',(current.plan&&current.plan.length)||'-']];
+  const nav=[['状态',current.status||'idle'],['当前地图',current.current_map||'-'],['建图',current.mapping?'进行中':'未启动'],['导航错误',current.nav_error||'-'],['路径点',(current.plan&&current.plan.length)||'-']];
   $('navGrid').innerHTML=nav.map(([k,v])=>'<div class="si"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>').join('');
   const d=current.diag||{};
   const BOOL={motor_free:{'1':'已释放','0':'已使能'},emergency:{'1':'急停','0':'正常'},charge:{'1':'充电中','0':'未充电'}};
