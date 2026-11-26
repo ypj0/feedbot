@@ -1,10 +1,12 @@
 #include "feedbot_chassis_ros2/release_connection.hpp"
 #include <algorithm>
+#include <atomic>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <hardware_interface/system_interface.hpp>
 #include <pluginlib/class_list_macros.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <realtime_tools/realtime_publisher.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 namespace feedbot_chassis_ros2 {
 using CallbackReturn = hardware_interface::CallbackReturn;
@@ -19,6 +21,8 @@ class ChassisSystem : public hardware_interface::SystemInterface {
     double next_diagnostic_ = 0.0;
     bool faulted_ = false;
     bool allow_charge_motion_ = false;
+    std::atomic<bool> reinit_requested_{false};
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reinit_service_;
     double joint_update_last_us_ = 0.0;
     double joint_update_max_us_ = 0.0;
     double diagnostic_build_last_us_ = 0.0;
@@ -214,6 +218,19 @@ public:
         diagnostics_ = get_node()->create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", 10);
         realtime_diagnostics_ = std::make_unique<
             realtime_tools::RealtimePublisher<diagnostic_msgs::msg::DiagnosticArray>>(diagnostics_);
+        reinit_service_ = get_node()->create_service<std_srvs::srv::Trigger>(
+            "/chassis/reinit_motor",
+            [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+                   std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+                if (faulted_ || !session_) {
+                    response->success = false;
+                    response->message = "chassis not active";
+                    return;
+                }
+                reinit_requested_.store(true);
+                response->success = true;
+                response->message = "reinit requested";
+            });
         clear_commands();
         return CallbackReturn::SUCCESS;
     }
@@ -286,6 +303,9 @@ public:
     Return write(const rclcpp::Time &, const rclcpp::Duration &) override {
         if (!session_) return faulted_ ? Return::ERROR : Return::OK;
         try {
+            if (reinit_requested_.exchange(false)) {
+                session_->reinit_motor();
+            }
             session_->command(get_command<double>("left_wheel_joint/velocity"),
                               get_command<double>("right_wheel_joint/velocity"),
                               allow_charge_motion_);

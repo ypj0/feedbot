@@ -63,7 +63,7 @@ class ChargeDockNode(Node):
         self.declare_parameter('charge_timeout', 180.0)
         self.declare_parameter('controller_frequency', 20.0)
         self.declare_parameter('undock_distance', 0.4)
-        self.declare_parameter('undock_speed', 0.15)
+        self.declare_parameter('undock_speed', 0.25)
         self.declare_parameter('undock_max_distance', 0.8)
         self.declare_parameter('search_timeout', 30.0)
         self.declare_parameter('search_rotate_speed', 0.3)
@@ -126,6 +126,7 @@ class ChargeDockNode(Node):
         self.pose_correction = None
         self.final_start_pose = None
         self.final_start_odom = None
+        self.reinit_future = None
         self.started_at = None
         self.searching = False
         self.search_count = 0
@@ -134,6 +135,7 @@ class ChargeDockNode(Node):
         self.pose_correction = None  # [dx, dy, dyaw] ICP 锁定后相对 amcl 的修正
         self.final_start_pose = None  # 进入最终入桩时的地图位姿
         self.final_start_odom = None  # 进入最终入桩时的里程计位姿
+        self.reinit_future = None
         self.lock = threading.Lock()
 
         self.pub_cmd = self.create_publisher(TwistStamped, '/wheel/cmd_vel', 10)
@@ -153,6 +155,7 @@ class ChargeDockNode(Node):
             Trigger, '/charge_dock/calibrate_docked', self.calibrate_docked_cb)
         self.srv_reload = self.create_service(Trigger, '/charge_dock/reload', self.reload_cb)
         self.srv_get_dock = self.create_service(Trigger, '/charge_dock/get_dock', self.get_dock_cb)
+        self.reinit_client = self.create_client(Trigger, '/chassis/reinit_motor')
         self.create_timer(1.0 / self.freq, self.control_tick)
 
         self.load_dock()
@@ -255,17 +258,18 @@ class ChargeDockNode(Node):
                 resp.success = False
                 resp.message = 'already moving'
                 return resp
-            if 0 < self.charge_status < 5:
-                resp.success = False
-                resp.message = '正在充电，电机被硬件锁定，无法自动脱桩；请先手动脱离充电桩或停止充电'
-                return resp
+            # 原厂脱桩先重新使能电机（帧字节9=1 -> MCU 0x139 -> CAN 使能驱动器）
+            if self.reinit_client.wait_for_service(timeout_sec=2.0):
+                self.reinit_future = self.reinit_client.call_async(Trigger.Request())
+            else:
+                self.reinit_future = None
             self.undocking = True
             self.undock_start = list(self.robot) if self.robot is not None else None
             self.undock_started_at = self.get_clock().now()
             self.undock_lin = 0.0
             resp.success = True
             resp.message = 'undocking started'
-            self.get_logger().info('undocking started')
+            self.get_logger().info('undocking started (reinit motor)')
             return resp
 
     def calibrate_cb(self, req, resp):
@@ -502,6 +506,17 @@ class ChargeDockNode(Node):
         if self.robot is None:
             self.stop_motion()
             return
+        if self.reinit_future is not None:
+            if not self.reinit_future.done():
+                self.publish_cmd(0.0, 0.0)
+                return
+            try:
+                result = self.reinit_future.result()
+                self.get_logger().info(
+                    'reinit motor done: %s' % ('ok' if result.success else result.message))
+            except Exception as e:
+                self.get_logger().warn('reinit motor call failed: %s' % e)
+            self.reinit_future = None
         if self.undock_started_at is not None:
             dt = (self.get_clock().now() - self.undock_started_at).nanoseconds / 1e9
             if dt > 15.0:
@@ -527,7 +542,7 @@ class ChargeDockNode(Node):
                 % (moved, self.charge_status))
             return
         # 低速前进（正线速度）
-        self.undock_lin = min(self.undock_lin + 0.02, self.undock_speed)
+        self.undock_lin = min(self.undock_lin + 0.05, self.undock_speed)
         self.publish_cmd(self.undock_lin, 0.0)
 
     def approach(self, r, d):

@@ -253,7 +253,7 @@ public:
             if (status.charge != 0) {
                 const double linear = Wheels::radius * (left_radps + right_radps) / 2.0;
                 const bool allowed =
-                    allow_charge_motion && linear >= -0.10 && linear <= 0.10;
+                    allow_charge_motion && linear >= -0.30 && linear <= 0.30;
                 if (!allowed) {
                     left_radps = 0.0;
                     right_radps = 0.0;
@@ -264,6 +264,16 @@ public:
         send(frame);
         if (left_radps == 0.0 && right_radps == 0.0) ++command_zero_count;
         else ++command_nonzero_count;
+    }
+
+    void reinit_motor() {
+        feedbot_chassis::require_serial(!stopped_ && !output_failed_, "serial session not writable");
+        // 原厂 reinitMotor：帧字节 9 置 1，触发 MCU 0x139 动作，
+        // 通过 CAN SDO 重新使能左右电机驱动器（充电互锁释放）。
+        Frame frame = feedbot_chassis::kReviewedStationary;
+        frame[9] = 1;
+        feedbot_chassis::checksum(frame);
+        send(frame);
     }
 
     void stop() {
