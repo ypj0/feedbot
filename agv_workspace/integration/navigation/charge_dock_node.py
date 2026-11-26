@@ -2,7 +2,8 @@
 """Feedbot 回充对接节点：复用原厂 ChargeController 控制律（离线逆向模型）。
 
 输入：
-- /amcl_pose：机器人当前位姿
+- /amcl_pose：机器人当前位姿（Cartographer /tracked_pose 的兼容别名）
+- /scan：前向激光，用于桩模板 ICP 搜索
 - /diagnostics：底盘反馈，提取 ChargeStatus（charge 字段）
 输出：
 - /wheel/cmd_vel：TwistStamped 速度命令（回充期间独占）
@@ -16,11 +17,16 @@ import math
 import os
 import threading
 
+import numpy as np
 import rclpy
+from rclpy.qos import qos_profile_sensor_data
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped, TwistStamped
 from diagnostic_msgs.msg import DiagnosticArray
+from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Trigger
+
+from dock_icp import icp_align, refine_pose, scan_front_points
 
 TAU = 6.283185307179586
 
@@ -38,7 +44,7 @@ def quat_to_yaw(q):
 class ChargeDockNode(Node):
     def __init__(self):
         super().__init__('feedbot_charge_dock')
-        self.declare_parameter('config', '/navcfg/charge_dock_config.json')
+        self.declare_parameter('config', '/opt/feedbot-maps/charge_dock_config.json')
         self.declare_parameter('dock_x', 0.0)
         self.declare_parameter('dock_y', 0.0)
         self.declare_parameter('dock_yaw', 0.0)
@@ -53,6 +59,10 @@ class ChargeDockNode(Node):
         self.declare_parameter('controller_frequency', 20.0)
         self.declare_parameter('undock_distance', 0.2)
         self.declare_parameter('undock_speed', 0.08)
+        self.declare_parameter('search_timeout', 30.0)
+        self.declare_parameter('search_rotate_speed', 0.3)
+        self.declare_parameter('icp_rms_threshold', 0.05)
+        self.declare_parameter('icp_inlier_ratio', 0.5)
 
         self.cfg_path = self.get_parameter('config').value
         self.abort_angle = self.get_parameter('abort_angle').value
@@ -66,11 +76,18 @@ class ChargeDockNode(Node):
         self.freq = self.get_parameter('controller_frequency').value
         self.undock_distance = self.get_parameter('undock_distance').value
         self.undock_speed = self.get_parameter('undock_speed').value
+        self.search_timeout = self.get_parameter('search_timeout').value
+        self.search_rotate_speed = self.get_parameter('search_rotate_speed').value
+        self.icp_rms_threshold = self.get_parameter('icp_rms_threshold').value
+        self.icp_inlier_ratio = self.get_parameter('icp_inlier_ratio').value
 
         self.dock = None          # [x, y, yaw]
         self.pre_dock = None      # [x, y, yaw]
         self.robot = None         # [x, y, yaw]
         self.charge_status = 0
+        self.scan = None          # 最新 LaserScan
+        self.template = None      # Nx2 桩模板点（scan 帧）
+        self.template_pose = None # 标定时机器人地图位姿 [x, y, yaw]
 
         # 原厂跨周期命令状态
         self.twist_lin = 0.0
@@ -92,17 +109,28 @@ class ChargeDockNode(Node):
         self.finished = False
         self.failed = False
         self.failure_reason = ''
+        self.searching = False
+        self.search_count = 0
+        self.search_started_at = None
+        self.pose_correction = None
         self.started_at = None
+        self.searching = False
+        self.search_count = 0
+        self.search_started_at = None
+        self.pose_correction = None  # [dx, dy, dyaw] ICP 锁定后相对 amcl 的修正
         self.lock = threading.Lock()
 
         self.pub_cmd = self.create_publisher(TwistStamped, '/wheel/cmd_vel', 10)
         self.sub_pose = self.create_subscription(
             PoseWithCovarianceStamped, '/amcl_pose', self.pose_cb, 10)
+        self.sub_scan = self.create_subscription(
+            LaserScan, '/scan', self.scan_cb, qos_profile_sensor_data)
         self.sub_diag = self.create_subscription(
             DiagnosticArray, '/diagnostics', self.diag_cb, 10)
         self.srv_start = self.create_service(Trigger, '/charge_dock/start', self.start_cb)
         self.srv_cancel = self.create_service(Trigger, '/charge_dock/cancel', self.cancel_cb)
         self.srv_undock = self.create_service(Trigger, '/charge_dock/undock', self.undock_cb)
+        self.srv_calibrate = self.create_service(Trigger, '/charge_dock/calibrate', self.calibrate_cb)
         self.srv_reload = self.create_service(Trigger, '/charge_dock/reload', self.reload_cb)
         self.srv_get_dock = self.create_service(Trigger, '/charge_dock/get_dock', self.get_dock_cb)
         self.create_timer(1.0 / self.freq, self.control_tick)
@@ -126,6 +154,16 @@ class ChargeDockNode(Node):
                     'dock pose loaded: %.3f %.3f %.3f' % tuple(self.dock))
             else:
                 self.get_logger().warn('charge dock config has no dock pose')
+            tmpl = cfg.get('template')
+            if tmpl and tmpl.get('points') and tmpl.get('pose'):
+                self.template = np.asarray(tmpl['points'], dtype=float).reshape(-1, 2)
+                self.template_pose = [float(v) for v in tmpl['pose']]
+                self.get_logger().info(
+                    'dock template loaded: %d points' % self.template.shape[0])
+            else:
+                self.template = None
+                self.template_pose = None
+                self.get_logger().warn('charge dock config has no laser template')
         except FileNotFoundError:
             self.get_logger().warn('charge dock config not found: %s' % self.cfg_path)
         except Exception as e:
@@ -134,6 +172,9 @@ class ChargeDockNode(Node):
     def pose_cb(self, msg):
         p = msg.pose.pose
         self.robot = [p.position.x, p.position.y, quat_to_yaw(p.orientation)]
+
+    def scan_cb(self, msg):
+        self.scan = msg
 
     def diag_cb(self, msg):
         for s in msg.status:
@@ -188,6 +229,43 @@ class ChargeDockNode(Node):
             resp.success = True
             resp.message = 'undocking started'
             self.get_logger().info('undocking started')
+            return resp
+
+    def calibrate_cb(self, req, resp):
+        """标定：约定车辆停在桩前 0.5m、车头朝桩，记录桩位姿和激光模板。"""
+        with self.lock:
+            if self.robot is None:
+                resp.success = False
+                resp.message = 'robot pose not ready'
+                return resp
+            if self.scan is None:
+                resp.success = False
+                resp.message = 'scan not ready'
+                return resp
+            pts = scan_front_points(self.scan)
+            if pts.shape[0] < 20:
+                resp.success = False
+                resp.message = 'too few front scan points: %d' % pts.shape[0]
+                return resp
+            th = self.robot[2]
+            dock = [self.robot[0] + 0.5 * math.cos(th),
+                    self.robot[1] + 0.5 * math.sin(th), th]
+            pre_dock = [self.robot[0], self.robot[1], th]
+            cfg = {
+                'dock': {'x': dock[0], 'y': dock[1], 'yaw': dock[2]},
+                'pre_dock': {'x': pre_dock[0], 'y': pre_dock[1], 'yaw': pre_dock[2]},
+                'template': {'points': pts.tolist(), 'pose': pre_dock},
+            }
+            self.dock = dock
+            self.pre_dock = pre_dock
+            self.template = pts
+            self.template_pose = pre_dock
+            self.stop_motion()
+            self.active = False
+            self.undocking = False
+            resp.success = True
+            resp.message = json.dumps(cfg, ensure_ascii=False)
+            self.get_logger().info('dock calibrated: %s' % resp.message)
             return resp
 
     def reload_cb(self, req, resp):
@@ -286,19 +364,80 @@ class ChargeDockNode(Node):
                     self.stop_motion()
                     self.get_logger().info('docking timeout')
                     return
+            # 有激光模板且尚未锁定：先按原厂搜索段找桩
+            if self.template is not None and self.pose_correction is None:
+                self.search_tick()
+                return
+            robot = self.corrected_robot()
+            if robot is None:
+                return
             if not self.approach_done:
-                r = self.approach(self.robot, self.dock)
+                r = self.approach(robot, self.dock)
                 if r == 0:
                     self.approach_done = True
                     self.stop_motion()
                     self.get_logger().info('approach done, entering final')
             else:
-                if not self.final_step(self.robot, self.dock):
+                if not self.final_step(robot, self.dock):
                     self.failed = True
                     self.failure_reason = 'final progress stopped'
                     self.active = False
                     self.stop_motion()
                     self.get_logger().info('docking final failed')
+
+    def corrected_robot(self):
+        if self.robot is None:
+            return None
+        if self.pose_correction is None:
+            return list(self.robot)
+        dx, dy, dyaw = self.pose_correction
+        return [self.robot[0] + dx, self.robot[1] + dy,
+                norm_angle(self.robot[2] + dyaw)]
+
+    def search_tick(self):
+        """原厂搜索段：旋转并 ICP 匹配桩模板；锁定后给出相对 Cartographer 的修正。"""
+        if self.search_started_at is None:
+            self.search_started_at = self.get_clock().now()
+        dt = (self.get_clock().now() - self.search_started_at).nanoseconds / 1e9
+        if dt > self.search_timeout:
+            self.failed = True
+            self.failure_reason = 'dock search timeout'
+            self.active = False
+            self.stop_motion()
+            self.get_logger().info('dock search timeout')
+            return
+        if self.scan is None or self.robot is None:
+            self.publish_cmd(0.0, 0.0)
+            return
+        current = scan_front_points(self.scan)
+        if current.shape[0] < 20:
+            self.publish_cmd(0.0, 0.0)
+            return
+        theta, tx, ty, rms, inliers = icp_align(self.template, current)
+        if rms < self.icp_rms_threshold and inliers > self.icp_inlier_ratio:
+            refined = refine_pose(self.template_pose, theta, tx, ty)
+            self.pose_correction = [
+                refined[0] - self.robot[0],
+                refined[1] - self.robot[1],
+                norm_angle(refined[2] - self.robot[2]),
+            ]
+            self.searching = False
+            self.stop_motion()
+            self.get_logger().info(
+                'dock template locked: rms=%.4f inliers=%.2f correction=%s'
+                % (rms, inliers, self.pose_correction))
+            return
+        self.searching = True
+        self.search_count += 1
+        c = self.search_count
+        if c <= 149 or (c > 449 and c <= 749):
+            w = -self.search_rotate_speed
+        else:
+            if c > 749:
+                c = 150
+                self.search_count = 150
+            w = self.search_rotate_speed
+        self.publish_cmd(0.0, w)
 
     def undock_tick(self):
         """脱桩：前进离开桩，直到移动 undock_distance 米。"""

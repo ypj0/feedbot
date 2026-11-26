@@ -30,8 +30,6 @@ from diagnostic_msgs.msg import DiagnosticArray
 from sensor_msgs.msg import LaserScan
 from rclpy.action import ActionClient
 from rclpy.node import Node
-from rcl_interfaces.msg import Parameter, ParameterType
-from rcl_interfaces.srv import SetParameters
 from tf2_ros import Buffer, TransformListener, TransformException
 from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
 
@@ -135,6 +133,7 @@ class NavNode(Node):
         self.dock_start_client = self.create_client(Trigger, '/charge_dock/start')
         self.dock_cancel_client = self.create_client(Trigger, '/charge_dock/cancel')
         self.dock_undock_client = self.create_client(Trigger, '/charge_dock/undock')
+        self.dock_calibrate_client = self.create_client(Trigger, '/charge_dock/calibrate')
         self.dock_get_client = self.create_client(Trigger, '/charge_dock/get_dock')
         self.dock_reload_client = self.create_client(Trigger, '/charge_dock/reload')
         self.relocalize_client = self.create_client(Trigger, '/relocalize')
@@ -499,36 +498,27 @@ class NavNode(Node):
         return json.loads(msg)
 
     def dock_calibrate(self):
-        p = self.state.pose
-        if not p:
-            raise RuntimeError('pose not ready')
-        th = p['yaw']
-        dock = {'x': p['x'] + 0.5*math.cos(th),
-                'y': p['y'] + 0.5*math.sin(th),
-                'yaw': th}
-        pre_dock = {'x': p['x'], 'y': p['y'], 'yaw': th}
-        # 通过参数设置回充节点桩位姿，然后 reload
-        for name, val in [('dock_x', dock['x']), ('dock_y', dock['y']), ('dock_yaw', dock['yaw'])]:
-            cli = self.create_client(SetParameters, '/feedbot_charge_dock/set_parameters')
-            if not cli.wait_for_service(timeout_sec=5):
-                raise RuntimeError('set_parameters service not available')
-            req = SetParameters.Request()
-            pv = Parameter()
-            pv.name = name
-            pv.value.type = ParameterType.PARAMETER_DOUBLE
-            pv.value.double_value = float(val)
-            req.parameters = [pv]
-            fut = cli.call_async(req)
-            deadline = time.time() + 5
-            while time.time() < deadline:
-                if fut.done(): break
-                time.sleep(0.02)
-            if not fut.done():
-                raise RuntimeError('set parameter timeout')
-        self.call_trigger(self.dock_reload_client)
-        self.state.set('dock', dock)
-        self.state.set('pre_dock', pre_dock)
-        return dict(dock=dock, pre_dock=pre_dock)
+        ok, msg = self.call_trigger(self.dock_calibrate_client, timeout=15.0,
+                                    service_name='dock calibrate')
+        if not ok:
+            raise RuntimeError(msg)
+        info = json.loads(msg)
+        cfg = {
+            'dock': info['dock'],
+            'pre_dock': info['pre_dock'],
+            'template': info['template'],
+        }
+        path = os.path.join(MAPS_ROOT, 'charge_dock_config.json')
+        tmp = path + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, ensure_ascii=False)
+        os.replace(tmp, path)
+        self.call_trigger(self.dock_reload_client, timeout=5.0,
+                          service_name='dock reload')
+        self.state.set('dock', info['dock'])
+        self.state.set('pre_dock', info['pre_dock'])
+        return {'dock': info['dock'], 'pre_dock': info['pre_dock'],
+                'template_points': len(info.get('template', {}).get('points', []))}
 
     def dock_undock(self):
         # 触发脱桩并等待 charge 恢复 0
