@@ -366,6 +366,7 @@ class ChargeDockNode(Node):
         resp.message = json.dumps({'dock': self.dock, 'pre_dock': self.pre_dock,
                                    'active': self.active,
                                    'charging': self.charging, 'failed': self.failed,
+                                   'undocking': self.undocking,
                                    'failure_reason': self.failure_reason},
                                   ensure_ascii=False)
         return resp

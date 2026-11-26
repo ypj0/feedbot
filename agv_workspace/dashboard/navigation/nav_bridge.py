@@ -551,24 +551,24 @@ class NavNode(Node):
         return {'docked_pose': info['docked_pose']}
 
     def dock_undock(self):
-        # 触发脱桩并等待 charge 恢复 0
+        # 触发脱桩，并等待 charge 恢复 0 且脱桩状态机真正结束。
+        # 定位无需在此重扫：回桩时已用 docked_pose 自动播种，脱桩过程由
+        # Cartographer 连续跟踪。
         ok, msg = self.call_trigger(self.dock_undock_client, timeout=15.0)
         if not ok:
             raise RuntimeError(msg)
-        deadline = time.time() + 12.0
+        deadline = time.time() + 20.0
         while time.time() < deadline:
-            if getattr(self, 'charge_status', 0) == 0:
-                break
-            time.sleep(0.2)
-        if getattr(self, 'charge_status', 0) != 0:
-            raise RuntimeError('脱桩超时，charge 仍非 0')
-        # 脱桩后自动扫描匹配重定位
-        reloc = None
-        try:
-            reloc = self.relocalize()
-        except Exception as e:
-            reloc = {'error': str(e)}
-        return {'ok': True, 'relocalized': reloc}
+            try:
+                info = self.dock_get()
+                still_undocking = bool(info.get('undocking', False))
+            except Exception:
+                still_undocking = True
+            if getattr(self, 'charge_status', 0) == 0 and not still_undocking:
+                self.state.set('status', 'idle')
+                return {'ok': True}
+            time.sleep(0.3)
+        raise RuntimeError('脱桩超时')
 
     def dock_start(self):
         info = self.dock_get()
