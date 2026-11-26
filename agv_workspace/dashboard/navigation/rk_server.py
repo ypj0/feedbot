@@ -43,7 +43,8 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        if self.path in ('/', '/index.html'):
+        static_path = self.path.split('?', 1)[0]
+        if static_path in ('/', '/index.html'):
             body = (ROOT / 'index.html').read_bytes()
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
