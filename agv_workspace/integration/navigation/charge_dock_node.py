@@ -136,7 +136,7 @@ class ChargeDockNode(Node):
         self.final_start_odom = None  # 进入最终入桩时的里程计位姿
         self.lock = threading.Lock()
 
-        self.pub_cmd = self.create_publisher(TwistStamped, '/wheel/cmd_vel', 10)
+        self.pub_cmd = self.create_publisher(TwistStamped, '/wheel/cmd_vel', qos_profile_sensor_data)
         self.sub_pose = self.create_subscription(
             PoseWithCovarianceStamped, '/amcl_pose', self.pose_cb, 10)
         self.sub_scan = self.create_subscription(

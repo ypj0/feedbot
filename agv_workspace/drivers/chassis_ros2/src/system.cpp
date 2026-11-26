@@ -18,7 +18,7 @@ class ChassisSystem : public hardware_interface::SystemInterface {
     uint64_t diagnostic_handoff_drop_count_ = 0;
     double next_diagnostic_ = 0.0;
     bool faulted_ = false;
-    bool allow_charge_motion_ = false;
+    bool allow_charge_motion_ = true;
     double joint_update_last_us_ = 0.0;
     double joint_update_max_us_ = 0.0;
     double diagnostic_build_last_us_ = 0.0;
@@ -210,7 +210,10 @@ public:
 
     CallbackReturn on_configure(const rclcpp_lifecycle::State &) override {
         if (faulted_) return CallbackReturn::ERROR;
-        get_node()->get_parameter_or("allow_charge_motion", allow_charge_motion_, false);
+        // 默认允许充电中低速运动（脱桩/入桩需要）。历史 bug：该参数写在
+        // controller_manager 命名空间，硬件组件读不到，导致一直默认 false、
+        // 充电中速度被静默清零。这里默认 true，仍允许显式参数覆盖。
+        get_node()->get_parameter_or("allow_charge_motion", allow_charge_motion_, true);
         diagnostics_ = get_node()->create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", 10);
         realtime_diagnostics_ = std::make_unique<
             realtime_tools::RealtimePublisher<diagnostic_msgs::msg::DiagnosticArray>>(diagnostics_);

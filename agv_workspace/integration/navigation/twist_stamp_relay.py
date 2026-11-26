@@ -24,7 +24,7 @@ class Relay(Node):
         self.front_blocked = False
         self.sub_cmd = self.create_subscription(Twist, '/cmd_vel_smoothed', self.cmd_cb, 10)
         self.sub_scan = self.create_subscription(LaserScan, '/scan', self.scan_cb, qos_profile_sensor_data)
-        self.pub = self.create_publisher(TwistStamped, '/wheel/cmd_vel', 10)
+        self.pub = self.create_publisher(TwistStamped, '/wheel/cmd_vel', qos_profile_sensor_data)
 
     def scan_cb(self, msg):
         lateral_limit = self.half_width + self.margin
