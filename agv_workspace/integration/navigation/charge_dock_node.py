@@ -257,6 +257,7 @@ class ChargeDockNode(Node):
                 return resp
             self.undocking = True
             self.undock_start = list(self.robot) if self.robot is not None else None
+            self.undock_started_at = self.get_clock().now()
             self.undock_lin = 0.0
             resp.success = True
             resp.message = 'undocking started'
@@ -497,6 +498,13 @@ class ChargeDockNode(Node):
         if self.robot is None:
             self.stop_motion()
             return
+        if self.undock_started_at is not None:
+            dt = (self.get_clock().now() - self.undock_started_at).nanoseconds / 1e9
+            if dt > 15.0:
+                self.undocking = False
+                self.stop_motion()
+                self.get_logger().warn('undocking timeout, charge still locked')
+                return
         if self.undock_start is None:
             self.undock_start = list(self.robot)
         moved = math.hypot(self.robot[0] - self.undock_start[0],
