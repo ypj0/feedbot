@@ -242,7 +242,7 @@ function drawCells(T,w,h){
 function drawCar(c,T,ghost){
   const x=T.px(c.x),y=T.py(c.y);
   ctx.save();ctx.translate(x,y);ctx.rotate(-c.yaw);
-  const w=0.65*T.scale,h=0.55*T.scale;
+  const w=0.65/savedMap.resolution*T.scale,h=0.55/savedMap.resolution*T.scale;
   if(ghost){
     ctx.fillStyle='rgba(255,212,0,.34)';
     ctx.fillRect(-w/2,-h/2,w,h);
