@@ -12,6 +12,7 @@ import os
 import threading
 import time
 import re
+import shutil
 import datetime
 import urllib.error
 import urllib.parse
@@ -38,6 +39,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
 FOOTPRINT = [[-0.325, -0.275], [0.325, -0.275], [0.325, 0.275], [-0.325, 0.275]]
 MAPS_ROOT = '/opt/feedbot-maps'
 CART_API = 'http://127.0.0.1:8099'
+NAV_POINTS_FILE = os.path.join(MAPS_ROOT, 'nav_points.json')
 
 ERROR_TEXT = {
     200: '未知错误',
@@ -139,6 +141,9 @@ class NavNode(Node):
         self.dock_start_future = None
         self.auto_charge = True
         self.auto_charge_triggered = False
+        self.route_active = False
+        self.route_points = []
+        self.route_index = 0
         self.create_timer(0.05, self.update)
 
 
@@ -282,6 +287,78 @@ class NavNode(Node):
             raise RuntimeError(msg)
         return {'ok': True, 'pose': msg}
 
+    def navpoints_load(self):
+        if not os.path.exists(NAV_POINTS_FILE):
+            return []
+        try:
+            data = json.load(open(NAV_POINTS_FILE, 'r'))
+            return data if isinstance(data, list) else []
+        except Exception:
+            return []
+
+    def navpoints_save(self, points):
+        tmp = NAV_POINTS_FILE + '.tmp'
+        with open(tmp, 'w') as handle:
+            json.dump(points, handle)
+        os.replace(tmp, NAV_POINTS_FILE)
+
+    def navpoint_add(self, name):
+        name = re.sub(r'[^A-Za-z0-9._\-\u4e00-\u9fff]+', '_', (name or '').strip())
+        if not name:
+            raise RuntimeError('导航点名称不能为空')
+        pose = self.state.pose
+        if not pose:
+            raise RuntimeError('当前位姿不可用')
+        points = self.navpoints_load()
+        if any(point.get('name') == name for point in points):
+            raise RuntimeError('导航点已存在: ' + name)
+        points.append({
+            'name': name,
+            'x': round(pose['x'], 4),
+            'y': round(pose['y'], 4),
+            'yaw': round(pose['yaw'], 4),
+        })
+        self.navpoints_save(points)
+        return {'ok': True, 'points': points}
+
+    def navpoint_delete(self, name):
+        points = [point for point in self.navpoints_load() if point.get('name') != name]
+        self.navpoints_save(points)
+        return {'ok': True, 'points': points}
+
+    def route_run(self, names):
+        if not isinstance(names, list) or not names:
+            raise RuntimeError('路线为空')
+        points = self.navpoints_load()
+        ordered = []
+        for name in names:
+            match = next((point for point in points if point.get('name') == name), None)
+            if match is None:
+                raise RuntimeError('导航点不存在: ' + name)
+            ordered.append(match)
+        self.route_points = ordered
+        self.route_index = 0
+        self.route_active = True
+        self.route_step()
+        return {'ok': True, 'total': len(ordered)}
+
+    def route_step(self):
+        if not self.route_active or self.route_index >= len(self.route_points):
+            self.route_active = False
+            self.route_points = []
+            self.state.set('status', 'succeeded')
+            self.state.set('goal', None)
+            return
+        point = self.route_points[self.route_index]
+        self.route_index += 1
+        self.go(point['x'], point['y'], point.get('yaw', 0.0))
+
+    def route_cancel(self):
+        self.route_active = False
+        self.route_points = []
+        self.cancel()
+        return {'ok': True}
+
     def cart_request(self, method, path, body=None):
         data = json.dumps(body or {}).encode() if body is not None else None
         request = urllib.request.Request(CART_API + path, data=data, method=method)
@@ -395,6 +472,16 @@ class NavNode(Node):
 
     def maps_switch(self, name):
         return self.load_static_map(name)
+
+    def maps_delete(self, name):
+        name = re.sub(r'[^A-Za-z0-9._-]+', '_', (name or '').strip())
+        if not name:
+            raise RuntimeError('地图名不能为空')
+        map_dir = os.path.join(MAPS_ROOT, name)
+        if not os.path.isdir(map_dir):
+            raise RuntimeError('地图不存在: ' + name)
+        shutil.rmtree(map_dir)
+        return {'ok': True, 'name': name}
 
     def mapping_stop(self):
         self.cart_request('POST', '/finish')
@@ -651,9 +738,16 @@ class NavNode(Node):
         result = result_future.result()
         r = result.result if hasattr(result, 'result') else result
         if r.error_code == 0:
-            self.state.set('status', 'succeeded')
             self.state.set('nav_error', None)
+            if self.route_active and self.route_index < len(self.route_points):
+                self.nav_future = None
+                self.result_future = None
+                self.route_step()
+                return
+            self.state.set('status', 'succeeded')
         else:
+            self.route_active = False
+            self.route_points = []
             self.state.set('status', 'aborted')
             self.state.set('nav_error', err_text(r))
         self.nav_future = None
@@ -696,6 +790,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {'map': sn.get('map'), 'footprint': sn.get('footprint')})
         if self.path == '/api/maps':
             return self.reply(200, self.node.maps_list())
+        if self.path == '/api/navpoints':
+            return self.reply(200, {'points': self.node.navpoints_load()})
         if self.path == '/api/stream':
             return self.stream()
         self.reply(404, {'error': 'unknown'})
@@ -756,6 +852,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, self.node.mapping_stop())
             if self.path == '/api/maps/switch':
                 return self.reply(200, self.node.maps_switch(body.get('name')))
+            if self.path == '/api/maps/delete':
+                return self.reply(200, self.node.maps_delete(body.get('name')))
+            if self.path == '/api/navpoints/add':
+                return self.reply(200, self.node.navpoint_add(body.get('name')))
+            if self.path == '/api/navpoints/delete':
+                return self.reply(200, self.node.navpoint_delete(body.get('name')))
+            if self.path == '/api/route/run':
+                return self.reply(200, self.node.route_run(body.get('names')))
+            if self.path == '/api/route/cancel':
+                return self.reply(200, self.node.route_cancel())
             if self.path == '/api/dock/get':
                 return self.reply(200, self.node.dock_get())
             if self.path == '/api/dock/calibrate':
