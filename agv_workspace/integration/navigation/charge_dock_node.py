@@ -255,6 +255,10 @@ class ChargeDockNode(Node):
                 resp.success = False
                 resp.message = 'already moving'
                 return resp
+            if 0 < self.charge_status < 5:
+                resp.success = False
+                resp.message = '正在充电，电机被硬件锁定，无法自动脱桩；请先手动脱离充电桩或停止充电'
+                return resp
             self.undocking = True
             self.undock_start = list(self.robot) if self.robot is not None else None
             self.undock_started_at = self.get_clock().now()
