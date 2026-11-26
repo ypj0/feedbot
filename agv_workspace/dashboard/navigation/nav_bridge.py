@@ -149,6 +149,7 @@ class NavNode(Node):
         self.power = None
         self.auto_charge = True
         self.auto_charge_triggered = False
+        self.auto_charge_retry_at = 0.0
         self.dock_status_at = 0
         self.route_active = False
         self.route_points = []
@@ -658,18 +659,44 @@ class NavNode(Node):
     def auto_reloc_check(self):
         return
     def auto_charge_tick(self):
-        # 低电量 20 自动回充
-        if not self.auto_charge or self.auto_charge_triggered:
+        if not self.auto_charge:
             return
         power = getattr(self, 'power', None)
         status = self.state.status
-        if power is not None and power < 20 and status not in ('docking_nav', 'docking', 'navigating'):
+
+        # 回充恢复（电量 ≥ 90）→ 重新武装，允许下次低电再触发
+        if self.auto_charge_triggered and power is not None and power >= 90:
+            self.auto_charge_triggered = False
+            self.auto_charge_retry_at = 0.0
+            self.get_logger().info('auto charge recovered at %d%%, re-armed' % power)
+            return
+
+        if self.auto_charge_triggered:
+            # 回充失败/中止后允许重试，带 60s 冷却避免死循环
+            if status in ('aborted', 'cancelled'):
+                now = time.time()
+                if self.auto_charge_retry_at == 0.0:
+                    self.auto_charge_retry_at = now + 60.0
+                elif now >= self.auto_charge_retry_at:
+                    self.auto_charge_triggered = False
+                    self.auto_charge_retry_at = 0.0
+                    self.get_logger().info('auto charge retry re-armed after failure')
+            return
+
+        # 低电量 20 触发；回充/导航中不重复触发。
+        # 放到后台线程执行，避免在 update 定时器里阻塞执行器等待 service 响应。
+        if power is not None and power < 20 and status not in (
+                'docking_nav', 'docking', 'navigating', 'charging'):
             self.auto_charge_triggered = True
-            self.get_logger().info('low power %d, auto charge triggered' % power)
-            try:
-                self.dock_start()
-            except Exception as e:
-                self.state.set('nav_error', 'auto charge failed: %s' % e)
+            self.get_logger().info('low power %d%%, auto charge triggered' % power)
+            threading.Thread(target=self._auto_dock_start, daemon=True).start()
+
+    def _auto_dock_start(self):
+        try:
+            self.dock_start()
+        except Exception as e:
+            self.auto_charge_triggered = False
+            self.state.set('nav_error', 'auto charge failed: %s' % e)
 
     def dock_status_tick(self):
         if self.state.status != 'docking':
