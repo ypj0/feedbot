@@ -29,14 +29,4 @@ def generate_launch_description():
             ],
             output="screen",
         ),
-        Node(
-            package="cartographer_ros",
-            executable="cartographer_occupancy_grid_node",
-            name="cartographer_occupancy_grid_node",
-            parameters=[
-                {"use_sim_time": False},
-                {"resolution": 0.05},
-            ],
-            output="screen",
-        ),
     ])
