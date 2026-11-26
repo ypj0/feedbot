@@ -60,15 +60,15 @@ controller_server:
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "ObstacleFootprint", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       BaseObstacle.scale: 0.02
-      ObstacleFootprint.scale: 1.0
-      PathAlign.scale: 32.0
+      ObstacleFootprint.scale: 0.25
+      PathAlign.scale: 24.0
       PathAlign.forward_point_distance: 0.1
-      GoalAlign.scale: 24.0
+      GoalAlign.scale: 12.0
       GoalAlign.forward_point_distance: 0.1
-      PathDist.scale: 32.0
-      GoalDist.scale: 24.0
-      RotateToGoal.scale: 32.0
-      RotateToGoal.slowing_factor: 5.0
+      PathDist.scale: 24.0
+      GoalDist.scale: 18.0
+      RotateToGoal.scale: 16.0
+      RotateToGoal.slowing_factor: 3.0
       RotateToGoal.lookahead_time: 0.8
 
     progress_checker:
@@ -79,8 +79,8 @@ controller_server:
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.15
-      yaw_goal_tolerance: 0.15
+      xy_goal_tolerance: 0.20
+      yaw_goal_tolerance: 0.25
 
 planner_server:
   ros__parameters:
@@ -136,7 +136,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.20   # 全局膨胀：Hybrid 用 footprint 判碰撞，膨胀仅控制路径居中
+        inflation_radius: 0.18   # 全局膨胀：Hybrid 用 footprint 判碰撞，膨胀仅控制路径居中
       always_send_full_costmap: true
 
 local_costmap:
@@ -170,7 +170,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.10   # 局部膨胀：窄通道通行与原地旋转保持 10 cm
+        inflation_radius: 0.08   # 局部膨胀：窄通道通行与原地旋转保持 8 cm
 
 map_server:
   ros__parameters:
