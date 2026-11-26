@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import rclpy
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, TwistStamped
 from nav2_msgs.action import NavigateToPose, ComputePathToPose
 from std_srvs.srv import Trigger
 from nav2_msgs.srv import LoadMap
@@ -130,6 +130,7 @@ class NavNode(Node):
         self.create_subscription(NavPath, '/local_plan', self.local_plan_cb, qos_profile_sensor_data)
         self.create_subscription(DiagnosticArray, '/diagnostics', self.diag_cb, 10)
         self.create_subscription(LaserScan, '/scan', self.scan_cb, qos_profile_sensor_data)
+        self.manual_vel_pub = self.create_publisher(TwistStamped, '/wheel/cmd_vel', qos_profile_sensor_data)
         self.nav_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         self.path_client = ActionClient(self, ComputePathToPose, '/compute_path_to_pose')
         self.dock_start_client = self.create_client(Trigger, '/charge_dock/start')
@@ -555,6 +556,7 @@ class NavNode(Node):
         # 触发脱桩，并等待 charge 恢复 0 且脱桩状态机真正结束。
         # 定位无需在此重扫：回桩时已用 docked_pose 自动播种，脱桩过程由
         # Cartographer 连续跟踪。
+        self.manual_stop()
         ok, msg = self.call_trigger(self.dock_undock_client, timeout=15.0)
         if not ok:
             raise RuntimeError(msg)
@@ -572,6 +574,7 @@ class NavNode(Node):
         raise RuntimeError('脱桩超时')
 
     def dock_start(self):
+        self.manual_stop()
         info = self.dock_get()
         pre = info.get('pre_dock')
         if not pre:
@@ -767,6 +770,7 @@ class NavNode(Node):
         return dict(path=path, length=len(path))
 
     def go(self, x, y, yaw_goal):
+        self.manual_stop()
         if getattr(self, 'charge_status', 0) > 0:
             self.state.set('status', 'undocking')
             self.dock_undock()
@@ -786,6 +790,22 @@ class NavNode(Node):
         self.nav_future = self.nav_client.send_goal_async(goal)
         self.nav_sent = time.time()
         return dict(accepted='pending')
+
+    def manual_vel(self, vx, wz):
+        """网页遥杆直控：向 /wheel/cmd_vel 发布 TwistStamped。"""
+        vx = max(-0.4, min(0.4, float(vx)))
+        wz = max(-0.8, min(0.8, float(wz)))
+        out = TwistStamped()
+        out.header.stamp = self.get_clock().now().to_msg()
+        out.header.frame_id = 'base_link'
+        out.twist.linear.x = vx
+        out.twist.angular.z = wz
+        self.manual_vel_pub.publish(out)
+        return {'ok': True, 'vx': vx, 'wz': wz}
+
+    def manual_stop(self):
+        if getattr(self, 'manual_vel_pub', None) is not None:
+            self.manual_vel(0.0, 0.0)
 
     def update(self):
         try:
@@ -936,6 +956,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, {'ok': True})
             if self.path == '/api/relocalize':
                 return self.reply(200, self.node.relocalize())
+            if self.path == '/api/manual_vel':
+                return self.reply(200, self.node.manual_vel(
+                    body.get('vx', 0), body.get('wz', 0)))
             if self.path == '/api/mapping/start':
                 return self.reply(200, self.node.mapping_start())
             if self.path == '/api/mapping/save':
