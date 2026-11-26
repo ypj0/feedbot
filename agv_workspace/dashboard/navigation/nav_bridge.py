@@ -277,7 +277,7 @@ class NavNode(Node):
         raise RuntimeError(service_name + ' service timeout')
 
     def relocalize(self):
-        ok, msg = self.call_trigger(self.relocalize_client, timeout=90.0, service_name='relocalize')
+        ok, msg = self.call_trigger(self.relocalize_client, timeout=2.0, service_name='relocalize')
         if not ok:
             raise RuntimeError(msg)
         return {'ok': True, 'pose': msg}
