@@ -94,16 +94,17 @@ class CartographerRelocalizer(Node):
                         self.charge_status = int(float(v.value))
                     except (TypeError, ValueError):
                         pass
-        if self.charge_status > 0 and self.docked_pose is not None and not self.seeded_for_charge:
+        charging = 0 < self.charge_status < 5
+        if charging and self.docked_pose is not None and not self.seeded_for_charge:
             self.seeded_for_charge = True
             self.publish_pose(*self.docked_pose)
             self.get_logger().info('auto-seeded Cartographer from docked pose (charge detected)')
-        elif self.charge_status == 0:
+        elif not charging:
             self.seeded_for_charge = False
 
     def resolve_pose(self):
         """返回 (x, y, yaw, source) 或 None。"""
-        if self.charge_status > 0 and self.docked_pose is not None:
+        if 0 < self.charge_status < 5 and self.docked_pose is not None:
             return self.docked_pose[0], self.docked_pose[1], self.docked_pose[2], 'docked'
         if self.scan is None or self.map is None:
             return None
