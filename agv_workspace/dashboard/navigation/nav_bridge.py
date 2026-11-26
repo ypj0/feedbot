@@ -466,9 +466,13 @@ class NavNode(Node):
                 return 100
             return -1
 
+        row_major = [pixel_to_occ(value) for value in pixels]
+        data = []
+        for row in range(height - 1, -1, -1):
+            data.extend(row_major[row * width:(row + 1) * width])
         self.state.set('map', dict(
             width=width, height=height, resolution=resolution,
-            origin=[origin[0], origin[1]], data=[pixel_to_occ(v) for v in pixels]))
+            origin=[origin[0], origin[1]], data=data))
         self.state.set('current_map', name)
         return {'ok': True, 'name': name}
 
