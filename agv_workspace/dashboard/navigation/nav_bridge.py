@@ -266,10 +266,19 @@ class NavNode(Node):
         raise RuntimeError(service_name + ' service timeout')
 
     def relocalize(self):
-        ok, msg = self.call_trigger(self.relocalize_client, timeout=2.0, service_name='relocalize')
-        if not ok:
-            raise RuntimeError(msg)
-        return {'ok': True, 'pose': msg}
+        # 全局扫描匹配可能需要数秒；服务不存在仍要快速失败。
+        if not self.relocalize_client.wait_for_service(timeout_sec=2.0):
+            raise RuntimeError('relocalize service not available')
+        fut = self.relocalize_client.call_async(Trigger.Request())
+        deadline = time.time() + 12.0
+        while time.time() < deadline:
+            if fut.done():
+                ok, msg = fut.result().success, fut.result().message
+                if not ok:
+                    raise RuntimeError(msg)
+                return {'ok': True, 'pose': msg}
+            time.sleep(0.02)
+        raise RuntimeError('relocalize service timeout')
 
     def navpoints_load(self):
         if not os.path.exists(NAV_POINTS_FILE):

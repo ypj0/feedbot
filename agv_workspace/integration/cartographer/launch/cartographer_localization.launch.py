@@ -29,4 +29,11 @@ def generate_launch_description():
             ],
             output="screen",
         ),
+        ExecuteProcess(
+            cmd=[
+                "python3", "-B",
+                str(Path(__file__).parent.parent / "cartographer_initialpose_bridge.py"),
+            ],
+            output="screen",
+        ),
     ])

@@ -82,6 +82,10 @@ def generate_launch_description():
             output="screen",
         ),
         ExecuteProcess(
+            cmd=["python3", "-B", str(Path(__file__).parent / "cartographer_relocalize.py")],
+            output="screen",
+        ),
+        ExecuteProcess(
             cmd=["python3", "-B", str(Path(__file__).parent / "charge_dock_node.py")],
             output="screen",
         ),
