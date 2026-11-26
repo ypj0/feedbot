@@ -9,6 +9,7 @@ mapping container and exposes:
 """
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -64,6 +65,14 @@ class CartographerNode:
         self.call(self.finish_client, request, timeout=60.0)
         self.finished = True
 
+    def restart(self):
+        try:
+            self.finish()
+        except RuntimeError:
+            pass
+        threading.Timer(0.5, os._exit, args=(0,)).start()
+        return {'ok': True}
+
     def save(self, name):
         name = re.sub(r'[^A-Za-z0-9._-]+', '_', (name or '').strip())
         if not name:
@@ -118,6 +127,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == '/finish':
             self.node.finish()
             return self.reply(200, {'ok': True, 'finished': True})
+        if parsed.path == '/restart':
+            result = self.node.restart()
+            return self.reply(200, result)
         if parsed.path == '/save':
             query = parse_qs(parsed.query)
             name = (query.get('name') or [''])[0]

@@ -304,7 +304,9 @@ class NavNode(Node):
     def mapping_start(self):
         status = self.cart_request('GET', '/status')
         if not status.get('mapping'):
-            raise RuntimeError('Cartographer 轨迹未激活')
+            self.cart_request('POST', '/restart')
+            self.state.set('mapping', True)
+            return {'ok': True, 'mapping': True, 'restarting': True}
         self.state.set('mapping', True)
         return {'ok': True, 'mapping': True, 'already': True}
 
