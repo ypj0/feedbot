@@ -16,6 +16,7 @@ def generate_launch_description():
             arguments=[
                 "-configuration_directory", config_dir,
                 "-configuration_basename", "feedbot_2d_mapping.lua",
+                "-start_trajectory_with_default_topics=false",
             ],
             remappings=[
                 ("scan", "/scan"),

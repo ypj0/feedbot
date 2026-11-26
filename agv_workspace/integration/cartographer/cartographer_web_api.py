@@ -20,7 +20,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import rclpy
-from cartographer_ros_msgs.srv import FinishTrajectory, GetTrajectoryStates, WriteState
+from cartographer_ros_msgs.srv import FinishTrajectory, GetTrajectoryStates, StartTrajectory, WriteState
 
 
 MAPS_ROOT = Path('/opt/feedbot-maps')
@@ -36,6 +36,7 @@ class CartographerNode:
         self.finish_client = self.node.create_client(FinishTrajectory, '/finish_trajectory')
         self.write_client = self.node.create_client(WriteState, '/write_state')
         self.get_states_client = self.node.create_client(GetTrajectoryStates, '/get_trajectory_states')
+        self.start_client = self.node.create_client(StartTrajectory, '/start_trajectory')
         self.finished = False
 
     def spin(self):
@@ -58,6 +59,16 @@ class CartographerNode:
     def mapping_active(self):
         response = self.call(self.get_states_client, GetTrajectoryStates.Request())
         return any(state == 0 for state in response.trajectory_states.trajectory_state)
+
+    def start(self):
+        request = StartTrajectory.Request()
+        request.configuration_directory = '/opt/carto-deploy/cartographer/config'
+        request.configuration_basename = 'feedbot_2d_mapping.lua'
+        request.use_initial_pose = False
+        request.relative_to_trajectory_id = 0
+        response = self.call(self.start_client, request, timeout=60.0)
+        self.finished = False
+        return {'ok': True, 'trajectory_id': response.trajectory_id}
 
     def finish(self):
         request = FinishTrajectory.Request()
@@ -129,6 +140,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {'ok': True, 'finished': True})
         if parsed.path == '/restart':
             result = self.node.restart()
+            return self.reply(200, result)
+        if parsed.path == '/start':
+            result = self.node.start()
             return self.reply(200, result)
         if parsed.path == '/save':
             query = parse_qs(parsed.query)
