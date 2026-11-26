@@ -62,9 +62,9 @@ class ChargeDockNode(Node):
         self.declare_parameter('final_stall_ticks', 120)
         self.declare_parameter('charge_timeout', 180.0)
         self.declare_parameter('controller_frequency', 20.0)
-        self.declare_parameter('undock_distance', 0.4)
-        self.declare_parameter('undock_speed', 0.25)
-        self.declare_parameter('undock_max_distance', 0.8)
+        self.declare_parameter('undock_distance', 0.2)
+        self.declare_parameter('undock_speed', 0.08)
+        self.declare_parameter('undock_max_distance', 0.6)
         self.declare_parameter('search_timeout', 30.0)
         self.declare_parameter('search_rotate_speed', 0.3)
         self.declare_parameter('icp_rms_threshold', 0.05)
@@ -261,7 +261,7 @@ class ChargeDockNode(Node):
             self.undock_lin = 0.0
             resp.success = True
             resp.message = 'undocking started'
-            self.get_logger().info('undocking started (reinit motor)')
+            self.get_logger().info('undocking started')
             return resp
 
     def calibrate_cb(self, req, resp):
@@ -523,7 +523,7 @@ class ChargeDockNode(Node):
                 % (moved, self.charge_status))
             return
         # 低速前进（正线速度）
-        self.undock_lin = min(self.undock_lin + 0.05, self.undock_speed)
+        self.undock_lin = min(self.undock_lin + 0.02, self.undock_speed)
         self.publish_cmd(self.undock_lin, 0.0)
 
     def approach(self, r, d):

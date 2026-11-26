@@ -253,7 +253,7 @@ public:
             if (status.charge != 0) {
                 const double linear = Wheels::radius * (left_radps + right_radps) / 2.0;
                 const bool allowed =
-                    allow_charge_motion && linear >= -0.30 && linear <= 0.30;
+                    allow_charge_motion && linear >= -0.10 && linear <= 0.10;
                 if (!allowed) {
                     left_radps = 0.0;
                     right_radps = 0.0;
