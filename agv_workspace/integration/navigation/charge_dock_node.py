@@ -23,10 +23,14 @@ from rclpy.qos import qos_profile_sensor_data
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped, TwistStamped
 from diagnostic_msgs.msg import DiagnosticArray
+from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Trigger
 
-from dock_icp import icp_align, refine_pose, scan_front_points
+from dock_icp import (
+    compose_pose, icp_align, measure_plate_distance, refine_pose,
+    relative_pose, scan_front_points,
+)
 
 TAU = 6.283185307179586
 
@@ -86,6 +90,7 @@ class ChargeDockNode(Node):
         self.robot = None         # [x, y, yaw]
         self.charge_status = 0
         self.scan = None          # 最新 LaserScan
+        self.odom = None          # 最新里程计位姿 [x, y, yaw]（odom 帧）
         self.template = None      # Nx2 桩模板点（scan 帧）
         self.template_pose = None # 标定时机器人地图位姿 [x, y, yaw]
 
@@ -113,11 +118,15 @@ class ChargeDockNode(Node):
         self.search_count = 0
         self.search_started_at = None
         self.pose_correction = None
+        self.final_start_pose = None
+        self.final_start_odom = None
         self.started_at = None
         self.searching = False
         self.search_count = 0
         self.search_started_at = None
         self.pose_correction = None  # [dx, dy, dyaw] ICP 锁定后相对 amcl 的修正
+        self.final_start_pose = None  # 进入最终入桩时的地图位姿
+        self.final_start_odom = None  # 进入最终入桩时的里程计位姿
         self.lock = threading.Lock()
 
         self.pub_cmd = self.create_publisher(TwistStamped, '/wheel/cmd_vel', 10)
@@ -125,6 +134,8 @@ class ChargeDockNode(Node):
             PoseWithCovarianceStamped, '/amcl_pose', self.pose_cb, 10)
         self.sub_scan = self.create_subscription(
             LaserScan, '/scan', self.scan_cb, qos_profile_sensor_data)
+        self.sub_odom = self.create_subscription(
+            Odometry, '/odometry/filtered', self.odom_cb, qos_profile_sensor_data)
         self.sub_diag = self.create_subscription(
             DiagnosticArray, '/diagnostics', self.diag_cb, 10)
         self.srv_start = self.create_service(Trigger, '/charge_dock/start', self.start_cb)
@@ -175,6 +186,10 @@ class ChargeDockNode(Node):
 
     def scan_cb(self, msg):
         self.scan = msg
+
+    def odom_cb(self, msg):
+        p = msg.pose.pose
+        self.odom = [p.position.x, p.position.y, quat_to_yaw(p.orientation)]
 
     def diag_cb(self, msg):
         for s in msg.status:
@@ -248,8 +263,12 @@ class ChargeDockNode(Node):
                 resp.message = 'too few front scan points: %d' % pts.shape[0]
                 return resp
             th = self.robot[2]
-            dock = [self.robot[0] + 0.5 * math.cos(th),
-                    self.robot[1] + 0.5 * math.sin(th), th]
+            plate = measure_plate_distance(pts)
+            # 桩位姿 = 标定位姿 + (激光到桩面距离 - 0.055m) * 朝向
+            # 0.055 = 激光在中心前 0.27m - 车尾距中心 0.325m
+            offset = (plate - 0.055) if plate is not None else 0.5
+            dock = [self.robot[0] + offset * math.cos(th),
+                    self.robot[1] + offset * math.sin(th), th]
             pre_dock = [self.robot[0], self.robot[1], th]
             cfg = {
                 'dock': {'x': dock[0], 'y': dock[1], 'yaw': dock[2]},
@@ -265,7 +284,9 @@ class ChargeDockNode(Node):
             self.undocking = False
             resp.success = True
             resp.message = json.dumps(cfg, ensure_ascii=False)
-            self.get_logger().info('dock calibrated: %s' % resp.message)
+            self.get_logger().info(
+                'dock calibrated: plate=%.3f offset=%.3f' % (
+                    plate if plate is not None else float('nan'), offset))
             return resp
 
     def reload_cb(self, req, resp):
@@ -368,13 +389,15 @@ class ChargeDockNode(Node):
             if self.template is not None and self.pose_correction is None:
                 self.search_tick()
                 return
-            robot = self.corrected_robot()
+            robot = self.current_robot()
             if robot is None:
                 return
             if not self.approach_done:
                 r = self.approach(robot, self.dock)
                 if r == 0:
                     self.approach_done = True
+                    self.final_start_pose = robot
+                    self.final_start_odom = list(self.odom) if self.odom is not None else None
                     self.stop_motion()
                     self.get_logger().info('approach done, entering final')
             else:
@@ -393,6 +416,14 @@ class ChargeDockNode(Node):
         dx, dy, dyaw = self.pose_correction
         return [self.robot[0] + dx, self.robot[1] + dy,
                 norm_angle(self.robot[2] + dyaw)]
+
+    def current_robot(self):
+        """接近段用 Cartographer+ICP 修正；最终入桩段改用里程计死推。"""
+        if self.approach_done and self.final_start_pose is not None \
+                and self.final_start_odom is not None and self.odom is not None:
+            rel = relative_pose(self.final_start_odom, self.odom)
+            return compose_pose(self.final_start_pose, rel)
+        return self.corrected_robot()
 
     def search_tick(self):
         """原厂搜索段：旋转并 ICP 匹配桩模板；锁定后给出相对 Cartographer 的修正。"""

@@ -31,6 +31,21 @@ def scan_front_points(msg, angle_min=-1.0, angle_max=1.0, range_min=0.15,
     return np.asarray(pts, dtype=float).reshape(-1, 2)
 
 
+def measure_plate_distance(pts):
+    """Estimate the dock-plate distance from the laser (robust near-front range).
+
+    The dock plate is the nearest roughly-frontal structure. Returns ``None``
+    when there are not enough frontal points.
+    """
+    pts = np.asarray(pts, dtype=float).reshape(-1, 2)
+    frontal = pts[(pts[:, 0] > 0.2) & (np.abs(pts[:, 1]) < 0.35)]
+    if frontal.shape[0] < 5:
+        return None
+    k = max(3, min(12, int(frontal.shape[0] * 0.1)))
+    nearest = frontal[np.argsort(frontal[:, 0])[:k]]
+    return float(np.median(nearest[:, 0]))
+
+
 def _rotation(theta):
     c, s = math.cos(theta), math.sin(theta)
     return np.array([[c, -s], [s, c]], dtype=float)
@@ -119,6 +134,20 @@ def compose_pose(base, rel):
     if yaw > math.pi:
         yaw -= 2 * math.pi
     return [x, y, yaw]
+
+
+def relative_pose(a, b):
+    """Return pose of ``b`` relative to ``a``, both ``[x, y, yaw]``."""
+    dx = b[0] - a[0]
+    dy = b[1] - a[1]
+    c, s = math.cos(a[2]), math.sin(a[2])
+    rx = c * dx + s * dy
+    ry = -s * dx + c * dy
+    yaw = b[2] - a[2]
+    yaw = math.fmod(math.fmod(yaw, 2 * math.pi) + 2 * math.pi, 2 * math.pi)
+    if yaw > math.pi:
+        yaw -= 2 * math.pi
+    return [rx, ry, yaw]
 
 
 def refine_pose(template_pose, theta, tx, ty):
