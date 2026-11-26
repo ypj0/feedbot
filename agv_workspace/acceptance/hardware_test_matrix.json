@@ -1,0 +1,114 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-11-22",
+  "scope": "Coverage and gate index; linked run artifacts contain actual observations, not full hardware acceptance.",
+  "current_validation": "partial_readonly_and_offline",
+  "latest_report": "planning/hardware_validation_20261122.md",
+  "evidence_runs": ["agv_workspace/acceptance/runs/20261122_offline_04", "agv_workspace/acceptance/runs/20261122_offline_03", "agv_workspace/acceptance/runs/20261122_offline_02", "agv_workspace/acceptance/runs/20261122_live_01", "agv_workspace/acceptance/runs/20261122_live_02"],
+  "threshold_policy": "Durations and reconnect counts in online_evidence are proposed sampling targets, not approved acceptance limits. Actual measurements must be reported separately.",
+  "result_rule": "Only a run record under agv_workspace/acceptance/runs/ may change a device result. Historical evidence and source tests are not current hardware PASS.",
+  "safety_state": {
+    "vehicle_reported": "stopped and on charging dock",
+    "site_watchers": "reported present",
+    "physical_estop_pressed": "User declines pressing; live feedback EmergencyStatus=0. Do not bypass G3.",
+    "charging_constraint": "Do not send nonzero velocity, undock, or change charging state.",
+    "g3_blocker": "Existing stationary handoff requires fresh MCU EmergencyStatus=1; current read-only evidence recorded EmergencyStatus=0."
+  },
+  "global_gates": [
+    {"id": "G0", "required": "Signed assembly inventory: identity, serial/nameplate, wiring, power, mount and purpose for every installed item.", "status": "unknown"},
+    {"id": "G1", "required": "Versioned offline baseline and fault-path tests for each installed driver/protocol.", "status": "partial", "evidence": "Selected archived suites pass; camera/BMS/auxiliary driver coverage remains incomplete."},
+    {"id": "G2", "required": "Current read-only identity, owner, data freshness and evidence capture without control takeover.", "status": "partial", "evidence": "30-second ROS and host inventory collected; scan geometry fails, raw lidar UDP absent, camera gap and cross-host clock offset unresolved."},
+    {"id": "G3", "required": "E-stop asserted, measured stationary, exclusive ownership, bounded handoff and verified factory recovery.", "status": "blocked"},
+    {"id": "G4", "required": "Approved low-speed functional and failure tests with physical stop measurements.", "status": "blocked"},
+    {"id": "G5", "required": "Every installed required device PASS; no UNKNOWN, BLOCKED, FAIL or unresolved safety incident.", "status": "blocked"},
+    {"id": "G6", "required": "Buildable runtime, launch/config, safety bridge, ownership/recovery and regression entrypoint after G5.", "status": "blocked"}
+  ],
+  "devices": [
+    {
+      "id": "host_link_and_compute",
+      "assembly": "Current evidence identifies RK3588 as a relay and the internal x86 host; final navigation host and stable topology are unknown.",
+      "reuse_sources": ["planning/online_readonly.md", "analysis/body_navigation_20261107/onboard_hardware.json"],
+      "offline": {"commands": ["python3 校验资料包.py"], "coverage": ["archive integrity only"], "gaps": ["No host stress, reconnect, clock or resource test in this bundle."]},
+      "online_evidence": ["Three controlled reconnect records", "30-minute read-only link/clock/resource capture", "device-path and process-owner map"],
+      "conditions": {"stationary": "read-only only", "dynamic": "not applicable", "charging": "no control takeover"},
+      "must_pass": ["G0", "G2"], "current": "unknown"
+    },
+    {
+      "id": "chassis_mcu_serial",
+      "assembly": "Current mapping /dev/rikibase -> ttyUSB1 and robot_driver ownership exists; MCU model/nameplate and auxiliary-field meanings remain unknown.",
+      "reuse_sources": ["navigation_runtime/replacement/chassis/protocol.hpp", "navigation_runtime/replacement/chassis/serial_port.hpp", "navigation_runtime/replacement/chassis/transport.hpp", "navigation_runtime/replacement/chassis/lease.hpp"],
+      "offline": {"commands": ["python3 navigation_runtime/replacement/chassis/run_tests.py"], "coverage": ["40-byte framing/checksum", "corrupt RX resynchronization", "no-RX lease expiry", "blocked/partial TX terminal fault", "PTY disconnect", "stale epoch/sequence and reset gates"], "gaps": ["No production serial-owner/reactor runner or device-level timeout proof."]},
+      "online_evidence": ["Current device identity/baud/frame/version", "exclusive-owner audit", "fresh feedback and raw-frame archive", "factory recovery proof"],
+      "conditions": {"stationary": "G3 only: physical E-stop asserted, emergency=1, zero raw speeds, one owner; stationary probe is not offline and is currently blocked.", "dynamic": "No dynamic MCU test before G3 and signed G4 plan.", "charging": "zero-command only; do not undock or alter charge state."},
+      "must_pass": ["G0", "G1", "G2", "G3", "G4"], "current": "unknown"
+    },
+    {
+      "id": "traction_motors_brakes_encoders_odometry",
+      "assembly": "Drive/encoder feedback is implied by current driver_info and wheel_odom, but motor, driver, brake and encoder identities/specifications are not closed.",
+      "reuse_sources": ["navigation_runtime/replacement/chassis/odometry.hpp", "navigation_runtime/replacement/chassis/odometry_test.cpp", "navigation_runtime/replacement/chassis/verify_feedback_units.py", "navigation_runtime/reverse/MOTION_CHAIN_RECOVERY.md"],
+      "offline": {"commands": ["python3 navigation_runtime/replacement/chassis/run_tests.py", "python3 navigation_runtime/replacement/chassis/verify_feedback_units.py  # requires Unicorn and pyelftools; writes archival report"], "coverage": ["odometry numeric boundaries", "recovered unit/sign model", "lease/transport failure semantics"], "gaps": ["No motor driver/CAN model", "no brake or physical encoder calibration", "no physical stopping measurement."]},
+      "online_evidence": ["Nameplate and wiring inventory", "static encoder/noise evidence", "approved low-speed direction/scale/repeatability runs", "external stop distance/time and thermal/current evidence"],
+      "conditions": {"stationary": "Do not arm; verify only feedback and E-stop interlock under G3.", "dynamic": "G4 requires signed speed/space/stop thresholds and each wheel, straight, turn, fault and restart tests.", "charging": "Nonzero motion and undocking prohibited."},
+      "must_pass": ["G0", "G1", "G2", "G3", "G4", "G5"], "current": "unknown"
+    },
+    {
+      "id": "safety_interlocks_and_loss_of_control",
+      "assembly": "Emergency, motor-free, charge, shutdown and alarm fields are decoded from one reviewed frame profile; physical circuits and auxiliary meanings are not confirmed.",
+      "reuse_sources": ["navigation_runtime/replacement/chassis/lease.hpp", "navigation_runtime/replacement/chassis/transport.hpp", "navigation_runtime/replacement/chassis/stationarity.hpp", "navigation_runtime/replacement/chassis/stationary_probe.cpp"],
+      "offline": {"commands": ["python3 navigation_runtime/replacement/chassis/run_tests.py"], "coverage": ["emergency/interlock rejection", "command expiry without RX", "clock reversal", "partial-write fault", "restart disarmed"], "gaps": ["No physical emergency, brake, cable-loss, host-death or lock-wheel proof."]},
+      "online_evidence": ["Each installed interlock's electrical/physical response", "fault latch and manual reset trace", "independent physical stop measurements"],
+      "conditions": {"stationary": "Fresh asserted physical E-stop is mandatory for serial handoff.", "dynamic": "G4 only: separate tests for E-stop, lock, alarms, task expiry, process death and serial/USB loss.", "charging": "Remain stationary; do not use charging as an interlock test."},
+      "must_pass": ["G0", "G1", "G3", "G4", "G5"], "current": "unknown"
+    },
+    {
+      "id": "battery_bms_charger_and_dock",
+      "assembly": "Vehicle is reported on its charging dock; battery/BMS/charger/contacts identities, ratings and physical wiring are unknown. Power=82 and ChargeStatus=1 are display fields, not validated SOC/charge proof.",
+      "reuse_sources": ["navigation_runtime/replacement/chassis/protocol.hpp", "navigation_runtime/reverse/CHARGE_RECOVERY.md"],
+      "offline": {"commands": ["sh navigation_runtime/reverse/verify_all.sh /path/to/venv/bin/python (working copy only)"], "coverage": ["Recovered charge-controller software differential comparisons; not battery/BMS hardware"], "gaps": ["No local battery/BMS/charger driver or electrical charging fixture test exists."]},
+      "online_evidence": ["Nameplates and BMS limits", "calibrated voltage/current/temperature records", "manual charge-state transition evidence and fault/recovery evidence"],
+      "conditions": {"stationary": "Only passive/current-safe observation until ratings and procedures are confirmed.", "dynamic": "G4 motion testing occurs off dock only after an approved undock procedure.", "charging": "Current state: no nonzero velocity, no undock, no automatic recharge action."},
+      "must_pass": ["G0", "G2", "G4", "G5"], "current": "unknown"
+    },
+    {
+      "id": "lidar_2d",
+      "assembly": "A current /scan stream and historical captures support an installed 2D lidar; LT-R2-B label and installation/optics remain unconfirmed until nameplate inspection.",
+      "reuse_sources": ["navigation_runtime/replacement/lidar/packet.hpp", "navigation_runtime/replacement/lidar/lifecycle.hpp", "navigation_runtime/replacement/lidar/managed_node.cpp", "navigation_runtime/replacement/lidar/supervisor.py"],
+      "offline": {"commands": ["cmake -S navigation_runtime/replacement/lidar -B /tmp/feedbot-lidar-build  # requires ament/ROS2 and LDCP_SOURCE", "bash navigation_runtime/replacement/lidar/run_acceptance.sh  # onboard container, writes/builds there; not offline default", "bash navigation_runtime/replacement/lidar/run_control_fixture.sh  # onboard container; not offline default"], "coverage": ["raw packet truncation/CRC/block/frame recovery", "recorded replay", "lifecycle failure paths", "localhost SDK fixture", "owner-supervisor unit fixture"], "gaps": ["No real control/lifecycle handoff", "mock SDK service is not hardware", "raw replay does not prove installation/time/range calibration."]},
+      "online_evidence": ["Nameplate/network map", "passive raw-to-factory scan comparison", "static target/occlusion/range/direction check", "owner handoff, stop/sleep/disconnect and factory rollback record"],
+      "conditions": {"stationary": "Passive observation may continue; any port/control ownership switch is G3 with navigation inhibited.", "dynamic": "No navigation use until calibrated time/extrinsics and G5.", "charging": "No motion dependency; do not let lidar-only readiness authorize movement."},
+      "must_pass": ["G0", "G1", "G2", "G3", "G5"], "current": "unknown"
+    },
+    {
+      "id": "imu",
+      "assembly": "Current mapping /dev/rikiimu -> ttyUSB0 and imu_node ownership exists; actual IMU model, mounting and specifications are unknown.",
+      "reuse_sources": ["navigation_runtime/replacement/imu/wit_decoder.hpp", "navigation_runtime/replacement/imu/test.cpp"],
+      "offline": {"commands": ["clang++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined navigation_runtime/replacement/imu/test.cpp -o /tmp/feedbot-imu-test && /tmp/feedbot-imu-test"], "coverage": ["WIT 0x51/0x52/0x53 checksum/resync", "SI conversion", "quaternion order", "fragmentation", "per-channel age/skew and reversed receipt clock"], "gaps": ["No serial owner/lifecycle runner", "no hardware timestamp/backlog bound", "no mounting or physical calibration." ]},
+      "online_evidence": ["Device model/baud/owner and raw packet sample", "frequency/loss/time monotonicity", "fixed-mount axis/units/gravity/bias/noise/temperature evidence"],
+      "conditions": {"stationary": "G3 handoff requires exclusive serial ownership and E-stop precondition.", "dynamic": "G4 only: controlled axis rotation and vibration/temperature validation.", "charging": "Read-only or stationary capture only; no motion induced test."},
+      "must_pass": ["G0", "G1", "G2", "G3", "G4", "G5"], "current": "unknown"
+    },
+    {
+      "id": "rgb_depth_camera",
+      "assembly": "Current ROS topics and /ascamera_hp60c node are software evidence only; count, model, USB topology, SDK, serials and calibration are unknown.",
+      "reuse_sources": ["planning/online_readonly.md", "analysis/body_navigation_20261107/onboard_hardware.json"],
+      "offline": {"commands": [], "coverage": [], "gaps": ["No camera SDK, source driver, calibration assets, mock, replay test or runtime package in this bundle."]},
+      "online_evidence": ["Nameplate/VID:PID/serial/USB-tree evidence", "raw RGB/depth/point-cloud capture", "intrinsics/extrinsics and target-board checks", "reconnect/stream-loss and TF-authority evidence"],
+      "conditions": {"stationary": "Read-only capture is allowed; preserve current owner.", "dynamic": "Calibration/latency claims require a controlled approved test after identity closure.", "charging": "No motion test; do not infer dock state from images."},
+      "must_pass": ["G0", "G2", "G4", "G5"], "current": "unknown"
+    },
+    {
+      "id": "auxiliary_io_and_runtime_delivery",
+      "assembly": "Bumpers, ultrasonic/IR, lights, buzzer, lift/cleaning and other auxiliaries are uninventoried. native_ros is an integration excerpt, not a complete ROS2 package.",
+      "reuse_sources": ["navigation_runtime/replacement/native_ros/src/native_io.cpp", "navigation_runtime/replacement/native_ros/src/command_bridge.cpp", "navigation_runtime/replacement/native_ros/msg/MotorCommand.msg", "navigation_runtime/replacement/native_ros/msg/NativeState.msg", "navigation_runtime/replacement/native_ros/msg/TaskLease.msg"],
+      "offline": {"commands": [], "coverage": [], "gaps": ["navigation_runtime/replacement/native_ros lacks CMakeLists.txt, package.xml, launch/config, testdata and run_regressions.py; navigation_runtime/replacement/incidents/ledger.json is also absent. The new acceptance/incidents/ledger.json is a separate test ledger, not the missing production runtime. No full ROS2 package can be built or accepted."]},
+      "online_evidence": ["Signed inventory for every installed auxiliary", "one-owner command-source audit", "per-device safe-default/fault/recovery proof"],
+      "conditions": {"stationary": "Do not enable unpublished integration excerpt on hardware.", "dynamic": "No auxiliary actuator motion until inventory, driver and G4 procedure exist.", "charging": "Do not use unverified GPIO/auxiliary paths while docked."},
+      "must_pass": ["G0", "G1", "G2", "G4", "G5", "G6"], "current": "unknown"
+    }
+  ],
+  "run_record_contract": {
+    "directory": "agv_workspace/acceptance/runs/<UTC-run-id>/",
+    "minimum": ["manifest", "commands and exit codes", "source hashes", "device identities", "operator/site conditions", "raw samples", "threshold approvals", "result per gate"],
+    "forbidden_result_values_before_evidence": ["pass", "n/a without signed absence proof"]
+  }
+}

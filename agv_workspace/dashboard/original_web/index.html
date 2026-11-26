@@ -1,0 +1,2540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#f4f7fb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="鱼场导航">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+<meta name="description" content="鱼场机器人导航与建图控制台">
+<title>鱼场导航</title>
+<style>
+:root{--bg0:#f4f7fb;--bg1:#ffffff;--bg2:#f8fafc;--bg3:#eef3f8;--bg4:#e5ebf2;--bd:#d7e0ea;--bh:#b7c4d4;--t1:#13202e;--t2:#556374;--t3:#92a0af;--blue:#246bdb;--blued:rgba(36,107,219,.10);--green:#1f9d61;--greend:rgba(31,157,97,.10);--red:#d84d45;--redd:rgba(216,77,69,.10);--yel:#d3a226;--yeld:rgba(211,162,38,.12);--pur:#6f63d9;--r:10px;--rl:18px;--shadow:0 10px 28px rgba(16,24,40,.06);--mono:'SF Mono','JetBrains Mono','Cascadia Code',monospace;--sans:'IBM Plex Sans','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;font-family:var(--sans);background:linear-gradient(180deg,#f9fbfd 0%,#f2f5f9 100%);color:var(--t1);overflow:hidden;-webkit-tap-highlight-color:transparent}
+.app{display:grid;grid-template-rows:56px 1fr;grid-template-columns:minmax(0,1fr) 392px;height:100vh;gap:0}
+.hdr{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:rgba(255,255,255,.86);backdrop-filter:blur(18px);border-bottom:1px solid rgba(215,224,234,.9);box-shadow:0 1px 0 rgba(255,255,255,.8);z-index:100}
+.hdr-l,.hdr-r{display:flex;align-items:center;gap:10px}
+.conn-s{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--bd);border-radius:999px;background:rgba(255,255,255,.92);font-size:12px;font-weight:500;color:var(--t2)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--red);transition:.2s}
+.dot.on{background:var(--green);box-shadow:0 0 0 4px rgba(31,157,97,.12)}
+.hdr-r input{width:196px;height:36px;background:rgba(255,255,255,.96);border:1px solid var(--bd);border-radius:12px;color:var(--t1);font-size:12px;padding:0 12px;font-family:var(--mono);outline:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.8)}
+.hdr-r input:focus{border-color:#9eb8e5;box-shadow:0 0 0 4px rgba(36,107,219,.08)}
+.b{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border:1px solid var(--bd);border-radius:12px;background:#fff;color:var(--t1);font-size:12px;font-weight:600;cursor:pointer;transition:.16s;white-space:nowrap;user-select:none;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.b:disabled{opacity:.42;cursor:not-allowed;filter:none}
+.b:hover{background:var(--bg2);border-color:var(--bh)}
+.b:active{transform:scale(.98)}
+.b.p{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 8px 18px rgba(36,107,219,.16)}
+.b.p:hover{background:#1f5fc7}
+.b.d{background:#fff5f4;border-color:#f0cac7;color:#b53a34}
+.b.d:hover{background:#ffeceb;border-color:#eab3ad}
+.b.s{background:#f3fbf7;border-color:#cfe9dc;color:#1c7d4d}
+.b.s:hover{background:#ebf8f0}
+.b.w{background:#fffaf0;border-color:#eadcb1;color:#956c11}
+.b.w:hover{background:#fff4db}
+.b.sm{height:28px;font-size:11px;padding:0 10px;border-radius:10px}
+.icon-b{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid rgba(215,224,234,.95);border-radius:10px;background:rgba(255,255,255,.92);color:var(--t2);font-size:13px;cursor:pointer;box-shadow:0 1px 2px rgba(16,24,40,.04);transition:.16s}
+.icon-b:hover{background:#f7fafc;border-color:var(--bh);color:var(--t1)}
+.map-area{position:relative;background:radial-gradient(circle at top left,#f9fbfd 0%,#eef3f8 100%);overflow:hidden}
+#mapCanvas{position:absolute;top:0;left:0;image-rendering:auto;filter:drop-shadow(0 10px 24px rgba(15,23,42,.06))}
+.map-toolbar{display:none;position:absolute;top:10px;left:12px;right:12px;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;background:rgba(255,255,255,.82);backdrop-filter:blur(18px);border:1px solid rgba(215,224,234,.94);border-radius:16px;box-shadow:0 10px 24px rgba(15,23,42,.06);z-index:12}
+.mt-main{min-width:0;display:flex;flex-direction:column;gap:2px}
+.mt-name{font-size:12px;font-weight:700;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mt-sub{font-size:10px;color:var(--t3);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mt-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.mt-pill{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:999px;background:#eef3f8;border:1px solid #d9e2ec;color:var(--t2);font-size:10px;font-weight:700}
+.map-ol{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;pointer-events:none;z-index:10}.map-ol>*{pointer-events:auto}
+.badge{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.78);backdrop-filter:blur(14px);border:1px solid rgba(215,224,234,.92);border-radius:999px;padding:8px 12px;font-size:11px;font-weight:600;font-family:var(--mono);color:var(--t2);box-shadow:0 10px 24px rgba(15,23,42,.06)}
+.map-strip{display:none;position:absolute;left:12px;right:12px;bottom:12px;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;background:rgba(255,255,255,.8);backdrop-filter:blur(14px);border:1px solid rgba(215,224,234,.94);border-radius:14px;box-shadow:0 10px 24px rgba(15,23,42,.06);z-index:12}
+.map-strip span{font-size:10px;color:var(--t2);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.map-bar{position:absolute;bottom:14px;left:14px;right:14px;display:none;align-items:center;justify-content:center;gap:8px;padding:10px 12px;background:rgba(255,255,255,.84);backdrop-filter:blur(18px);border:1px solid rgba(215,224,234,.92);border-radius:18px;box-shadow:var(--shadow);z-index:10}
+.map-bar.show{display:flex}
+.map-rzoom{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;gap:6px;z-index:10}.map-rzoom .b{width:36px;height:36px;padding:0;font-size:16px}
+.mode-b{padding:8px 12px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid transparent;background:#fff;color:var(--t2)}
+.mode-b.nav{background:#eef4ff;color:var(--blue);border-color:#cfddfb}
+.mode-b.map{background:#fff8e6;color:#9a7415;border-color:#ead9a9}
+.mode-b.ext{background:#f2efff;color:#6558d1;border-color:#d8d2fb}
+.rpanel{display:flex;flex-direction:column;background:#f3f6fa;border-left:1px solid rgba(215,224,234,.9);overflow-y:auto;overflow-x:hidden;padding:12px}
+.rpanel::-webkit-scrollbar{width:6px}.rpanel::-webkit-scrollbar-thumb{background:#cdd7e2;border-radius:999px}
+.tabs{display:flex;gap:6px;padding:6px;background:rgba(255,255,255,.92);border:1px solid var(--bd);border-radius:16px;position:sticky;top:0;z-index:5;box-shadow:0 8px 20px rgba(16,24,40,.04);margin-bottom:12px}
+.tab{flex:1;padding:10px 0;text-align:center;font-size:12px;font-weight:700;color:var(--t3);cursor:pointer;border-radius:12px;transition:.15s}
+.tab:hover{color:var(--t2);background:#f6f8fb}.tab.active{color:var(--t1);background:#eef3f8}
+.tb{display:none;flex:1;flex-direction:column;overflow-y:auto;gap:12px}.tb.active{display:flex}
+.sec{padding:14px;background:rgba(255,255,255,.92);border:1px solid rgba(215,224,234,.95);border-radius:18px;box-shadow:0 10px 22px rgba(16,24,40,.04)}
+.sec-t{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:10px}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.si{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f8fafc;border-radius:14px;border:1px solid transparent}
+.si.alert{border-color:#f1cbc8;background:#fff5f4}.si.warn{border-color:#ecd8a4;background:#fff9ec}
+.si-i{width:7px;height:7px;border-radius:50%;flex-shrink:0}.si-i.g{background:var(--green);box-shadow:0 0 0 4px rgba(31,157,97,.08)}.si-i.r{background:var(--red);box-shadow:0 0 0 4px rgba(216,77,69,.08)}.si-i.y{background:var(--yel)}.si-i.x{background:#b5c0cc}
+.si-l{font-size:11px;color:var(--t2)}.si-v{font-size:11px;font-weight:700;color:var(--t1);margin-left:auto}
+.pose{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.pose-i{text-align:center;padding:10px 6px;background:#f8fafc;border:1px solid #edf2f7;border-radius:14px}.pose-i .l{font-size:9px;color:var(--t3);margin-bottom:3px}.pose-i .v{font-size:13px;font-weight:700;font-family:var(--mono);color:var(--t1)}
+.joy-w{display:flex;flex-direction:column;align-items:center;gap:10px}.joy-o{position:relative;width:168px;height:168px}
+.joy-b{width:168px;height:168px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffffff 0%,#eef3f8 100%);border:1px solid var(--bd);position:relative;touch-action:none;cursor:grab;box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 8px 18px rgba(16,24,40,.05)}.joy-b:active{cursor:grabbing}
+.joy-h{position:absolute;width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 38% 34%,#4e8cf0,var(--blue));border:2px solid rgba(255,255,255,.88);box-shadow:0 8px 20px rgba(36,107,219,.22);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none}.joy-h.on{box-shadow:0 10px 24px rgba(36,107,219,.28)}
+.joy-x{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:124px;height:124px;pointer-events:none}.joy-x::before,.joy-x::after{content:'';position:absolute;background:#d9e1ea}.joy-x::before{top:50%;left:0;right:0;height:1px}.joy-x::after{left:50%;top:0;bottom:0;width:1px}
+.spd{display:flex;gap:14px;font-family:var(--mono);font-size:11px}.spd .l{color:var(--t3)}.spd .v{color:var(--t1);font-weight:700;min-width:50px}
+.slw{width:100%;display:flex;align-items:center;gap:10px}.slw label{font-size:11px;color:var(--t2);white-space:nowrap}
+.slw input[type=range]{flex:1;-webkit-appearance:none;height:4px;background:#dfe6ee;border-radius:999px;outline:none}.slw input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--blue);cursor:pointer;box-shadow:0 0 0 4px rgba(36,107,219,.08)}.slw .sv{font-family:var(--mono);font-size:11px;color:var(--t1);min-width:42px;text-align:right}
+.kbd-h{display:flex;justify-content:center;gap:6px;flex-wrap:wrap}.kbd{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:22px;padding:0 6px;background:#fff;border:1px solid var(--bd);border-radius:8px;font-size:9px;font-family:var(--mono);color:var(--t2);box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.qa{display:grid;grid-template-columns:1fr 1fr;gap:8px}.qa .b{height:38px;width:100%;font-size:12px}
+.map-sel{display:flex;gap:8px;align-items:center}.map-sel select{flex:1;height:36px;background:#fff;border:1px solid var(--bd);border-radius:12px;color:var(--t1);font-size:12px;padding:0 10px;outline:none}.map-sel select:focus{border-color:#9eb8e5;box-shadow:0 0 0 4px rgba(36,107,219,.08)}
+.np-list{max-height:220px;overflow-y:auto;margin-top:8px}.np-list::-webkit-scrollbar{width:5px}.np-list::-webkit-scrollbar-thumb{background:#d4dde8;border-radius:999px}
+.np-i{display:flex;align-items:center;padding:8px 10px;border-radius:14px;cursor:pointer;transition:.12s;font-size:12px;gap:8px}.np-i:hover{background:#f5f8fb}.np-i .nm{flex:1;color:var(--t1);font-weight:600}.np-i .co{font-family:var(--mono);font-size:10px;color:var(--t3)}
+.np-i .tag{font-size:9px;padding:3px 6px;border-radius:999px;color:#fff;flex-shrink:0}.np-i .tag.c{background:#1f9d61}.np-i .tag.i{background:#6f63d9}.np-i .tag.n{background:var(--blue)}.np-i .acts{display:none;gap:4px;flex-shrink:0}.np-i:hover .acts{display:flex}
+.add-f{display:flex;gap:6px;align-items:center;margin-top:8px}.add-f input,.add-f select{height:34px;background:#fff;border:1px solid var(--bd);border-radius:12px;color:var(--t1);font-size:12px;padding:0 10px;outline:none}.add-f input{flex:1}
+.sub-t{font-size:10px;font-weight:700;color:var(--t3);margin:10px 0 6px;letter-spacing:.3px}
+.log{height:110px;overflow-y:auto;background:#f7fafc;border:1px solid var(--bd);border-radius:14px;padding:8px;font-family:var(--mono);font-size:10px;line-height:1.55}.log::-webkit-scrollbar{width:5px}.log::-webkit-scrollbar-thumb{background:#d4dde8;border-radius:999px}
+.le{color:var(--t2)}.le.i{color:var(--blue)}.le.o{color:var(--green)}.le.w{color:#a47916}.le.e{color:var(--red)}.le .ts{color:#96a3b3;margin-right:4px}
+.hint{font-size:11px;color:var(--t2);line-height:1.55;margin-top:8px;padding:10px 12px;background:#f7fafc;border-radius:14px;border:1px solid #e8eef4}
+.mbg{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(247,250,252,.45);backdrop-filter:blur(8px);z-index:200;align-items:center;justify-content:center}.mbg.show{display:flex}
+.modal{background:rgba(255,255,255,.96);border:1px solid rgba(215,224,234,.96);border-radius:24px;padding:22px;min-width:320px;max-width:420px;box-shadow:0 30px 60px rgba(16,24,40,.12)}
+.modal h3{font-size:16px;margin-bottom:12px;color:var(--t1)}.modal p{font-size:13px;color:var(--t2);margin-bottom:14px;line-height:1.65;white-space:pre-line}.modal input{width:100%;height:38px;background:#fff;border:1px solid var(--bd);border-radius:12px;color:var(--t1);font-size:13px;padding:0 12px;outline:none;margin-bottom:12px}.modal .bts{display:flex;gap:8px;justify-content:flex-end}.modal .bts .b{height:36px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.58}}.charging{animation:pulse 1.5s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}.spin{animation:spin 1s linear infinite}
+@media (max-width:1100px) and (max-height:640px) and (orientation:landscape){
+  .app{grid-template-rows:46px 1fr;grid-template-columns:minmax(0,1fr) 348px}
+  .hdr{padding:0 10px}
+  .hdr-l,.hdr-r{gap:8px}
+  .conn-s{padding:7px 10px;font-size:11px}
+  .mode-b{padding:7px 10px;font-size:11px}
+  .hdr-r input{width:146px;height:32px;font-size:11px;padding:0 10px}
+  .hdr .b{height:32px;padding:0 11px;font-size:11px}
+  .map-toolbar,.map-strip{display:flex}
+  .map-ol{display:none}
+  .map-rzoom{right:10px;bottom:50px;gap:4px}
+  .map-rzoom .b{width:32px;height:32px;font-size:14px;border-radius:10px}
+  .map-bar{left:10px;right:10px;bottom:48px;padding:8px 10px;gap:6px;flex-wrap:wrap;justify-content:flex-start}
+  .map-bar .b{height:30px;padding:0 10px;font-size:11px}
+  .rpanel{padding:8px;display:grid;grid-auto-rows:min-content;align-content:start;gap:8px}
+  .tabs{display:none}
+  .tb{display:contents !important}
+  .sec{padding:10px;border-radius:16px;box-shadow:0 8px 18px rgba(16,24,40,.04)}
+  .sec-t{font-size:9px;margin-bottom:8px}
+  .sg{gap:6px}
+  .si{padding:7px 8px;border-radius:12px}
+  .si-l,.si-v{font-size:10px}
+  .pose{gap:6px}
+  .pose-i{padding:8px 4px;border-radius:12px}
+  .pose-i .v{font-size:12px}
+  .joy-o,.joy-b{width:138px;height:138px}
+  .joy-h{width:38px;height:38px}
+  .joy-x{width:98px;height:98px}
+  .qa{gap:6px}
+  .qa .b{height:34px;font-size:11px}
+  .map-sel select,.map-sel .b{height:34px;font-size:11px}
+  .map-sel{gap:6px}
+  .np-list{max-height:148px}
+  .np-i{padding:7px 8px;font-size:11px;border-radius:12px}
+  .np-i .co{font-size:9px}
+  .np-i .acts{display:flex}
+  .add-f{gap:6px;flex-wrap:wrap}
+  .add-f input,.add-f select,.add-f .b{height:32px;font-size:11px}
+  .add-f input{flex:1 1 100%}
+  .hint{font-size:10px;padding:9px 10px;border-radius:12px}
+  .log{height:130px;font-size:9px;border-radius:12px}
+  #statusCard{order:1}
+  #mapCurrentCard{order:2}
+  #pointsCard{order:3}
+  #quickOpsCard{order:4}
+  #mappingCard{order:5}
+  #diagCard{order:6}
+  #poseCard{order:7}
+  #driveCard{order:8}
+  #deleteCard{order:9}
+}
+@media(max-width:900px) and (orientation:portrait){.app{grid-template-columns:1fr;grid-template-rows:56px 38vh 1fr}.rpanel{border-left:none;border-top:1px solid var(--bd)}.hdr{padding:0 12px}.hdr-r input{width:140px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="hdr">
+  <div class="hdr-l">
+    <div class="conn-s"><span class="dot" id="dot"></span><span id="cL">未连接</span></div>
+    <div class="mode-b nav" id="mI">导航模式</div>
+  </div>
+  <div class="hdr-r">
+    <input type="text" id="wsUrl" value="ws://127.0.0.1:9090">
+    <button class="b p" id="bC" onclick="toggleConn()">连接</button>
+  </div>
+</header>
+
+<div class="map-area" id="mapArea">
+  <canvas id="mapCanvas"></canvas>
+  <div class="map-toolbar" id="mapToolbar">
+    <div class="mt-main">
+      <span class="mt-name" id="mapTitleMini">未加载地图</span>
+      <span class="mt-sub" id="mapMetaMini">等待地图数据</span>
+    </div>
+    <div class="mt-actions">
+      <span class="mt-pill" id="mapModeMini">导航模式</span>
+      <button class="icon-b" onclick="loadMaps()" title="刷新地图列表">↻</button>
+      <button class="icon-b" onclick="resetView()" title="重置视图">⤢</button>
+    </div>
+  </div>
+  <div class="map-ol">
+    <div class="badge" id="mapBdg">地图未加载</div>
+    <div class="badge" id="poseBdg">X:-- Y:-- θ:--</div>
+  </div>
+  <div class="map-strip" id="mapStrip">
+    <span id="mapDimsMini">尺寸 -- × --</span>
+    <span id="mapPoseMini">X -- Y -- θ --</span>
+  </div>
+  <!-- Bottom bar: visible in mapping/extend mode -->
+  <div class="map-bar" id="mapBar">
+    <button class="b" onclick="addPtQuick(0)">📍 添加导航点</button>
+    <button class="b" onclick="addPtQuick(1)">🔌 添加充电桩</button>
+    <button class="b" onclick="addPtQuick(2)">🏠 添加初始点</button>
+    <button class="b s" id="saveMapBarBtn" onclick="saveAndExit()">💾 保存地图</button>
+    <button class="b w" onclick="exitMapping()">↩ 退出建图</button>
+  </div>
+  <div class="map-rzoom">
+    <button class="b" onclick="zoomMap(1.25)">+</button>
+    <button class="b" onclick="zoomMap(1/1.25)">−</button>
+    <button class="b" onclick="resetView()" style="font-size:11px">⟳</button>
+  </div>
+</div>
+
+<div class="rpanel">
+  <div class="tabs">
+    <div class="tab active" onclick="stab(0)">状态/控制</div>
+    <div class="tab" onclick="stab(1)">地图管理</div>
+    <div class="tab" onclick="stab(2)">日志</div>
+  </div>
+
+  <!-- Tab 0 -->
+  <div class="tb active" id="t0">
+    <div class="sec" id="statusCard">
+      <div class="sec-t">机器人状态</div>
+      <div class="sg">
+        <div class="si" id="si-loc"><span class="si-i x" id="ic-loc"></span><span class="si-l">定位</span><span class="si-v" id="v-loc">--</span></div>
+        <div class="si" id="si-nav"><span class="si-i x" id="ic-nav"></span><span class="si-l">导航</span><span class="si-v" id="v-nav">--</span></div>
+        <div class="si" id="si-chg"><span class="si-i x" id="ic-chg"></span><span class="si-l">充电</span><span class="si-v" id="v-chg">--</span></div>
+        <div class="si" id="si-ems"><span class="si-i x" id="ic-ems"></span><span class="si-l">急停</span><span class="si-v" id="v-ems">--</span></div>
+        <div class="si" id="si-mot"><span class="si-i x" id="ic-mot"></span><span class="si-l">电机</span><span class="si-v" id="v-mot">--</span></div>
+        <div class="si" id="si-bat"><span class="si-i x" id="ic-bat"></span><span class="si-l">电量</span><span class="si-v" id="v-bat">--</span></div>
+        <div class="si" id="si-feed"><span class="si-i x" id="ic-feed"></span><span class="si-l">联动</span><span class="si-v" id="v-feed">--</span></div>
+      </div>
+    </div>
+    <div class="sec" id="poseCard"><div class="sec-t">实时位姿</div><div class="pose">
+      <div class="pose-i"><div class="l">X</div><div class="v" id="px">--</div></div>
+      <div class="pose-i"><div class="l">Y</div><div class="v" id="py">--</div></div>
+      <div class="pose-i"><div class="l">θ°</div><div class="v" id="pt">--</div></div>
+    </div></div>
+    <div class="sec" id="driveCard"><div class="sec-t">手动控制</div>
+      <div class="joy-w">
+        <div class="joy-o"><div class="joy-b" id="jB"><div class="joy-x"></div><div class="joy-h" id="jH"></div></div></div>
+        <div class="spd"><div><span class="l">线速</span><span class="v" id="dL">0.00</span></div><div><span class="l">角速</span><span class="v" id="dA">0.00</span></div></div>
+        <div class="slw"><label>限速</label><input type="range" id="sS" min="0.1" max="1.2" step="0.05" value="0.5"><span class="sv" id="sV">0.50</span></div>
+        <div class="kbd-h"><span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span><span style="font-size:9px;color:var(--t3);margin-left:3px">Space=急停</span></div>
+      </div>
+    </div>
+    <div class="sec" id="quickOpsCard"><div class="sec-t">导航快捷</div><div class="qa">
+      <button class="b d" onclick="eStop()">⏹ 急停</button>
+      <button class="b w" onclick="exitNav()">✋ 退出导航</button>
+      <button class="b" onclick="undock()" id="bU">⚡ 脱桩</button>
+      <button class="b s" onclick="autoChg()">🔋 回充</button>
+      <button class="b" onclick="reboot()">🔄 底盘重启</button>
+      <button class="b" onclick="relocate()">📌 重定位</button>
+    </div></div>
+    <div class="sec" id="feedCard">
+      <div class="sec-t">投料联动</div>
+      <div class="add-f" style="margin-top:0">
+        <input type="text" id="feedApiUrl" placeholder="http://10.7.5.234:8080">
+        <button class="b p" onclick="saveFeedSettings()">保存地址</button>
+      </div>
+      <div class="hint">
+        单点或多点导航时：普通导航点到达后执行一次 7 秒联动；多点任务会对下一个普通点下发 7 秒等待；充电点与初始点跳过。<br>
+        联动接口默认调用 RK3588 的 <code>/api/feed</code>。
+      </div>
+    </div>
+    <div class="sec" id="autoFeedCard">
+      <div class="sec-t">自动导航投喂任务</div>
+      <div class="hint">
+        手动把普通导航点加入队列，任务开始后逐点导航并触发一次联动；全部完成后自动回充。暂停/终止只影响自动任务，不删已有单点、多点与手动控制逻辑。
+      </div>
+      <div class="sub-t">候选普通点</div>
+      <div class="np-list" id="autoFeedCandidateList"><div style="padding:8px;font-size:10px;color:var(--t3)">切换到地图后可加入普通导航点</div></div>
+      <div class="sub-t">任务队列</div>
+      <div class="np-list" id="autoFeedQueueList"><div style="padding:8px;font-size:10px;color:var(--t3)">尚未加入任务点</div></div>
+      <div class="qa" style="margin-top:8px">
+        <button class="b p" id="autoFeedStartBtn">▶ 开始</button>
+        <button class="b w" id="autoFeedPauseBtn">⏸ 暂停</button>
+        <button class="b" id="autoFeedResumeBtn">▶ 继续</button>
+        <button class="b d" id="autoFeedStopBtn">⏹ 终止</button>
+      </div>
+      <div class="hint" id="autoFeedSummary">状态：待配置 | 当前点：-- | 剩余：0</div>
+    </div>
+  </div>
+
+  <!-- Tab 1 -->
+  <div class="tb" id="t1">
+    <div class="sec" id="mapCurrentCard">
+      <div class="sec-t">当前地图</div>
+      <div class="map-sel">
+        <select id="mS"><option value="">-- 加载中... --</option></select>
+        <button class="b" onclick="loadMaps()">刷新</button>
+        <button class="b p" onclick="switchMap()">切换</button>
+      </div>
+    </div>
+    <div class="sec" id="mappingCard">
+      <div class="sec-t">建图操作</div>
+      <div class="qa">
+        <button class="b w" onclick="newMap()">🗺️ 新建地图</button>
+        <button class="b" onclick="extendMap()">📐 扩展地图</button>
+        <button class="b s" id="saveMapPanelBtn" onclick="saveAndExit()">💾 保存并退出建图</button>
+        <button class="b" onclick="exitMapping()">↩ 退出建图(不保存)</button>
+      </div>
+      <div class="hint" id="mapHint">
+        <b>建图流程：</b><br>
+        1. 点击"新建地图"进入建图模式<br>
+        2. 用摇杆推动机器人扫描整个区域<br>
+        3. 在充电桩前约0.5米、正对充电桩时，手动点击"添加充电桩"<br>
+        4. 把机器人推到充电桩并进入充电，系统只会自动创建初始点（含姿态）<br>
+        5. 在需要停靠的位置点"添加导航点"，系统按当前位置+姿态保存<br>
+        6. 点击"保存并退出建图"完成<br>
+        <b style="color:var(--yel)">⚠ 充电点请在桩前约0.5米处手动添加；初始点需充电后自动生成或手动补建。</b>
+      </div>
+    </div>
+    <div class="sec" id="pointsCard">
+      <div class="sec-t">导航点 / 选点</div>
+      <div class="sub-t">当前点位</div>
+      <div class="np-list" id="npL"><div style="padding:8px;font-size:10px;color:var(--t3)">选择并切换地图后显示导航点</div></div>
+      <div class="sub-t">建图加点</div>
+      <div class="add-f">
+        <input type="text" id="ptN" placeholder="点名称">
+        <select id="ptM"><option value="0">导航点</option><option value="1">充电桩</option><option value="2">初始点</option></select>
+        <button class="b p" onclick="addPt()">添加</button>
+      </div>
+    </div>
+    <div class="sec" id="deleteCard"><div class="sec-t">删除地图</div>
+      <div class="map-sel"><select id="dS"><option value="">-- 选择 --</option></select><button class="b d" onclick="delMap()">删除</button><button class="b d" onclick="delAll()">删除全部</button></div>
+    </div>
+  </div>
+
+  <!-- Tab 2 -->
+  <div class="tb" id="t2">
+    <div class="sec" id="diagCard" style="flex:1">
+      <div class="sec-t">日志 / 诊断</div>
+      <div class="qa" style="margin-bottom:8px">
+        <button class="b" onclick="diagGetMaps()">探测地图</button>
+        <button class="b" onclick="loadMaps()">刷新地图</button>
+        <button class="b" onclick="relocate()">重定位</button>
+        <button class="b" onclick="resetView()">重置视图</button>
+      </div>
+      <div class="log" id="logA" style="height:calc(100vh - 170px)"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="mbg" id="mBg" onclick="if(event.target===this)cModal()">
+  <div class="modal"><h3 id="mT"></h3><p id="mB"></p><div id="mIn" style="display:none"><input id="mIv"></div><div class="bts"><button class="b" onclick="cModal()">取消</button><button class="b p" id="mOk">确认</button></div></div>
+</div>
+
+<script src="./fishbot_queue_feed_logic.js"></script>
+<script>
+const S={ws:null,conn:false,loc:0,nav:0,chg:0,ems:0,mot:0,bat:-1,
+  mapMode:0,pX:0,pY:0,pYaw:0,hasPose:false,
+  mapData:null,mapImg:null,mapInfo:null,mapMeta:null,
+  curFl:null,curMp:null,curPts:[],
+  stagedPts:[],tmpPid:-1,
+  saveFlow:{inFlight:false,completed:false,lastStatus:NaN,lastMessage:'',lastSpec:null},
+  scan:null,frontObs:false,lastObstacleAt:0,
+  maxSpd:.5,maxAng:1.5,cmdL:0,cmdA:0,cmdT:null,keys:new Set(),undocking:false,
+  navResume:null,
+  autoPt:{charge:false,initial:false,busy:false,lastTryAt:0},
+  navRun:{active:false,target:null,goalTarget:null,path:[],rawPath:[],index:0,timer:null,paused:false,pauseReason:'',lastPlanAt:0,lastProgressAt:0,lastDistance:Infinity,isChargeTask:false,phase:'idle',dockStartedAt:0},
+  feedCtl:{apiBaseUrl:'http://10.7.5.234:8080',pauseSeconds:7,busy:false,timer:null,lastQueueWaitTime:null,lastOperatedCount:0,lastTriggerKey:'',lastWarnedApiUrl:'',queueArmed:false,enabled:false,online:false,pollTimer:null,pendingNavTarget:null,pendingNavQueueEchoAt:0,pendingNavHasQueueEcho:false,lastNavStatus:null},
+  autoFeedTask:{queue:[],lockedQueue:[],status:'idle',currentIndex:-1,pauseAfterCurrent:false,terminateRequested:false,failureReason:'',token:0,lastCompletedIndex:-1},
+  mapSwitch:{inFlight:false,targetFloorId:null,targetMapId:null,startedAt:0},
+  navStatusSuppressUntil:0,
+  navStatusSuppressSet:[],
+  sc:1,ox:0,oy:0,_cb:{},_ci:0,
+  ros2Stream:null,ros2Plan:[],ros2LocalPlan:[],ros2Status:'idle',ros2Goal:null,
+  adv:new Set(),vendorQueueEchoAt:0,vendorQueueSig:'',vendorQueueReq:0};
+
+loadFeedSettings();
+
+// Log
+function L(m,c=''){const a=$('logA'),t=new Date().toLocaleTimeString('en-GB'),e=document.createElement('div');e.className='le '+c;e.innerHTML=`<span class="ts">[${t}]</span>${m}`;a.appendChild(e);a.scrollTop=a.scrollHeight;while(a.children.length>400)a.removeChild(a.firstChild)}
+function $(id){return document.getElementById(id)}
+function isLandscapePhone(){return window.matchMedia('(max-width:1100px) and (max-height:640px) and (orientation:landscape)').matches}
+function normalizeHttpBaseUrl(raw){return String(raw||'').trim().replace(/\/+$/,'')}
+function loadFeedSettings(){
+  try{
+    const saved=localStorage.getItem('fishbot.feedApiUrl');
+    if(saved)S.feedCtl.apiBaseUrl=normalizeHttpBaseUrl(saved)||S.feedCtl.apiBaseUrl;
+  }catch(_){}
+}
+function syncFeedSettingsUi(){if($('feedApiUrl'))$('feedApiUrl').value=S.feedCtl.apiBaseUrl}
+function saveFeedSettings(){
+  const next=normalizeHttpBaseUrl($('feedApiUrl')?.value||'');
+  if(!next){L('联动地址不能为空','w');return}
+  S.feedCtl.apiBaseUrl=next;
+  try{localStorage.setItem('fishbot.feedApiUrl',next)}catch(_){}
+  syncFeedSettingsUi();
+  L(`已保存联动地址 ${next}`,'o');
+  refreshFeedState(true);
+}
+function buildFeedApiUrl(path){return `${normalizeHttpBaseUrl(S.feedCtl.apiBaseUrl)}${path}`}
+function knownQueuePoints(){return visiblePts()}
+function getAutoFeedLogic(){return globalThis.FishbotQueueFeedLogic||{}}
+function autoFeedEditable(){return ['idle','stopped','completed','error'].includes(String(S.autoFeedTask.status||''))}
+function autoFeedWorking(){return ['starting','running','waiting_feed','paused','returning_charge'].includes(String(S.autoFeedTask.status||''))}
+function autoFeedQueueSource(){return autoFeedWorking()?S.autoFeedTask.lockedQueue:S.autoFeedTask.queue}
+function isMapSwitchBusy(){return Boolean(S.mapSwitch&&S.mapSwitch.inFlight)}
+function suppressNavigationStatuses(statuses,ms){
+  S.navStatusSuppressSet=Array.isArray(statuses)?statuses.map(v=>Number(v)).filter(Number.isFinite):[];
+  S.navStatusSuppressUntil=Date.now()+Math.max(0,Number(ms)||0);
+}
+function currentSuppressedNavigationStatuses(){
+  if(Date.now()>Number(S.navStatusSuppressUntil||0)){
+    S.navStatusSuppressUntil=0;
+    S.navStatusSuppressSet=[];
+    return [];
+  }
+  return S.navStatusSuppressSet.slice();
+}
+function currentAutoFeedQueueItem(){
+  const task=S.autoFeedTask;
+  if(task.currentIndex<0)return null;
+  return task.lockedQueue[task.currentIndex]||null;
+}
+function autoFeedRemainingCount(){
+  const task=S.autoFeedTask;
+  const source=autoFeedQueueSource();
+  if(!source.length)return 0;
+  if(!autoFeedWorking())return source.length;
+  const rest=source.length-(Math.max(task.currentIndex,0));
+  return Math.max(0,task.status==='waiting_feed'||task.status==='running'?rest:rest);
+}
+function getAutoFeedCandidates(){
+  const logic=getAutoFeedLogic();
+  if(typeof logic.pickAutoFeedCandidates==='function')return logic.pickAutoFeedCandidates(visiblePts());
+  return visiblePts().map(p=>normalizePoint(p)).filter(p=>p&&Number(p._m)===0);
+}
+function isSameAutoFeedPoint(a,b){
+  if(!a||!b)return false;
+  const aId=Number(a.pointid??a.pointId??a.point_id??0);
+  const bId=Number(b.pointid??b.pointId??b.point_id??0);
+  const aName=String(a.pointName??a.point_name??a.name??'').trim();
+  const bName=String(b.pointName??b.point_name??b.name??'').trim();
+  return (aId&&bId&&aId===bId)||(aName&&bName&&aName===bName);
+}
+function renderAutoFeedSummary(){
+  const el=$('autoFeedSummary');
+  if(!el)return;
+  const task=S.autoFeedTask;
+  const source=autoFeedQueueSource();
+  const cur=currentAutoFeedQueueItem();
+  const statusText={
+    idle:'待配置',
+    starting:'准备中',
+    running:'执行中',
+    waiting_feed:'联动中',
+    paused:'已暂停',
+    returning_charge:'回充中',
+    completed:'已完成',
+    stopped:'已终止',
+    error:'失败'
+  }[task.status]||task.status||'待机';
+  const currentName=cur?.pointName||'--';
+  let remaining=source.length;
+  if(task.status==='starting')remaining=task.lockedQueue.length;
+  else if(['running','waiting_feed','paused'].includes(task.status))remaining=Math.max(0,task.lockedQueue.length-Math.max(task.currentIndex,0));
+  else if(task.status==='returning_charge'||task.status==='completed')remaining=0;
+  const tail=task.failureReason?` | 原因：${task.failureReason}`:'';
+  el.textContent=`状态：${statusText} | 当前点：${currentName} | 队列：${source.length} | 剩余：${remaining}${tail}`;
+}
+function renderAutoFeedPanel(){
+  const candidateList=$('autoFeedCandidateList');
+  const queueList=$('autoFeedQueueList');
+  const startBtn=$('autoFeedStartBtn');
+  const pauseBtn=$('autoFeedPauseBtn');
+  const resumeBtn=$('autoFeedResumeBtn');
+  const stopBtn=$('autoFeedStopBtn');
+  if(!candidateList||!queueList||!startBtn||!pauseBtn||!resumeBtn||!stopBtn)return;
+
+  const editable=autoFeedEditable();
+  const candidates=getAutoFeedCandidates();
+  const task=S.autoFeedTask;
+  const source=autoFeedQueueSource();
+  const cur=currentAutoFeedQueueItem();
+
+  candidateList.innerHTML='';
+  if(!candidates.length){
+    candidateList.innerHTML='<div style="padding:8px;font-size:10px;color:var(--t3)">当前地图没有可加入的普通导航点</div>';
+  }else{
+    candidates.forEach(pt=>{
+      const row=document.createElement('div');
+      row.className='np-i';
+      const meta=`(${Number(pt.positionx||0).toFixed(1)},${Number(pt.positiony||0).toFixed(1)})`;
+      row.innerHTML=`<span class="tag n">导航点</span><span class="nm">${pt.pointName||('点'+pt.pointid)}</span><span class="co">${meta}</span>`;
+      const acts=document.createElement('div');
+      acts.className='acts';
+      const btn=document.createElement('button');
+      btn.className='b sm p';
+      btn.textContent='加入';
+      btn.disabled=!editable;
+      btn.onclick=()=>addAutoFeedPoint(pt.pointid);
+      acts.appendChild(btn);
+      row.appendChild(acts);
+      candidateList.appendChild(row);
+    });
+  }
+
+  queueList.innerHTML='';
+  if(!source.length){
+    queueList.innerHTML=`<div style="padding:8px;font-size:10px;color:var(--t3)">${editable?'尚未加入任务点':'当前任务队列为空'}</div>`;
+  }else{
+    source.forEach((item,index)=>{
+      const row=document.createElement('div');
+      row.className='np-i';
+      if(cur&&cur.key===item.key)row.style.borderColor='var(--blue)';
+      const badge=index===task.currentIndex&&autoFeedWorking()?`执行中 #${index+1}`:`#${index+1}`;
+      const meta=`(${Number(item.positionx||0).toFixed(1)},${Number(item.positiony||0).toFixed(1)})`;
+      row.innerHTML=`<span class="tag n">${badge}</span><span class="nm">${item.pointName||('点'+item.pointid)}</span><span class="co">${meta}</span>`;
+      const acts=document.createElement('div');
+      acts.className='acts';
+      if(editable){
+        const up=document.createElement('button');
+        up.className='b sm';
+        up.textContent='上移';
+        up.disabled=index===0;
+        up.onclick=()=>moveAutoFeedPoint(index,-1);
+        acts.appendChild(up);
+        const down=document.createElement('button');
+        down.className='b sm';
+        down.textContent='下移';
+        down.disabled=index===source.length-1;
+        down.onclick=()=>moveAutoFeedPoint(index,1);
+        acts.appendChild(down);
+        const remove=document.createElement('button');
+        remove.className='b sm d';
+        remove.textContent='移除';
+        remove.onclick=()=>removeAutoFeedPoint(index);
+        acts.appendChild(remove);
+      }
+      row.appendChild(acts);
+      queueList.appendChild(row);
+    });
+  }
+
+  startBtn.onclick=startAutoFeedMission;
+  pauseBtn.onclick=pauseAutoFeedMission;
+  resumeBtn.onclick=resumeAutoFeedMission;
+  stopBtn.onclick=()=>stopAutoFeedMission('任务已终止',{stopRobot:true,forceFeedOff:true});
+  startBtn.disabled=!editable||!task.queue.length||isMappingMode();
+  pauseBtn.disabled=!['running','waiting_feed'].includes(task.status);
+  resumeBtn.disabled=task.status!=='paused';
+  stopBtn.disabled=!autoFeedWorking();
+  renderAutoFeedSummary();
+}
+function resetAutoFeedTaskState(nextStatus='idle',reason=''){
+  const queue=S.autoFeedTask.queue.slice();
+  const token=nextStatus==='idle'?S.autoFeedTask.token:S.autoFeedTask.token;
+  S.autoFeedTask={queue,lockedQueue:[],status:nextStatus,currentIndex:-1,pauseAfterCurrent:false,terminateRequested:false,failureReason:reason,token,lastCompletedIndex:-1};
+}
+function addAutoFeedPoint(pointId){
+  if(!autoFeedEditable()){L('自动任务执行中，当前不允许修改队列','w');return}
+  const point=getAutoFeedCandidates().find(p=>Number(p.pointid)===Number(pointId));
+  if(!point){L('候选点不存在','w');return}
+  const logic=getAutoFeedLogic();
+  if(typeof logic.addPointToAutoFeedQueue==='function')S.autoFeedTask.queue=logic.addPointToAutoFeedQueue(S.autoFeedTask.queue,point);
+  else if(!S.autoFeedTask.queue.some(item=>item.key===point.key))S.autoFeedTask.queue.push(point);
+  renderAutoFeedPanel();
+}
+function removeAutoFeedPoint(indexOrKey){
+  if(!autoFeedEditable()){L('自动任务执行中，当前不允许修改队列','w');return}
+  const next=S.autoFeedTask.queue.filter((item,index)=>index!==Number(indexOrKey)&&item.key!==indexOrKey);
+  S.autoFeedTask.queue=next;
+  renderAutoFeedPanel();
+}
+function moveAutoFeedPoint(index,direction){
+  if(!autoFeedEditable()){L('自动任务执行中，当前不允许修改队列','w');return}
+  const logic=getAutoFeedLogic();
+  if(typeof logic.moveQueueItem==='function')S.autoFeedTask.queue=logic.moveQueueItem(S.autoFeedTask.queue,index,direction);
+  else{
+    const next=S.autoFeedTask.queue.slice();
+    const to=index+direction;
+    if(to>=0&&to<next.length){
+      const [item]=next.splice(index,1);
+      next.splice(to,0,item);
+    }
+    S.autoFeedTask.queue=next;
+  }
+  renderAutoFeedPanel();
+}
+function clearAutoFeedQueue(){
+  if(!autoFeedEditable()){L('自动任务执行中，当前不允许修改队列','w');return}
+  S.autoFeedTask.queue=[];
+  renderAutoFeedPanel();
+}
+function stopAutoFeedMotionOnly(){
+  clearPendingFeedNavigation();
+  cancelRos2Nav();
+  if(S.feedCtl.timer){clearTimeout(S.feedCtl.timer);S.feedCtl.timer=null}
+  S.feedCtl.busy=false;
+}
+function cancelRos2Nav(){
+  fetch('http://127.0.0.1:8088/api/cancel',{method:'POST'}).catch(()=>{});
+}
+async function stopAutoFeedMission(reason='',opts={}){
+  const task=S.autoFeedTask;
+  if(!autoFeedWorking()&&task.status!=='paused'&&task.status!=='error'&&task.status!=='completed')return;
+  const finalStatus=opts.error?'error':'stopped';
+  const nextReason=String(reason||task.failureReason||'').trim();
+  if(opts.stopRobot&&S.conn)rPub('/navi_stop',{data:5});
+  if(opts.forceFeedOff){
+    stopAutoFeedMotionOnly();
+    try{await setFeedEnabled(false,'自动任务终止')}catch(_){}
+  }
+  S.autoFeedTask={
+    queue:task.queue.slice(),
+    lockedQueue:[],
+    status:finalStatus,
+    currentIndex:-1,
+    pauseAfterCurrent:false,
+    terminateRequested:false,
+    failureReason:nextReason,
+    token:task.token,
+    lastCompletedIndex:task.lastCompletedIndex
+  };
+  renderAutoFeedPanel();
+  if(reason)L(`自动投喂任务${opts.error?'失败':'停止'}：${reason}`,opts.error?'e':'w');
+}
+function beginAutoFeedReturnToCharge(){
+  S.autoFeedTask.status='returning_charge';
+  S.autoFeedTask.pauseAfterCurrent=false;
+  renderAutoFeedPanel();
+  const started=autoChg({fromAutoFeedTask:true});
+  if(started===false)stopAutoFeedMission('自动回充启动失败',{error:true,stopRobot:false,forceFeedOff:false});
+  else L('自动投喂任务：全部点位完成，开始回充','i');
+}
+function advanceAutoFeedAfterFeed(){
+  const task=S.autoFeedTask;
+  const logic=getAutoFeedLogic();
+  const fallback=()=> {
+    if(task.terminateRequested)return {action:'stop'};
+    if(task.pauseAfterCurrent)return {action:'pause'};
+    if(task.currentIndex>=task.lockedQueue.length-1)return {action:'go_charge'};
+    return {action:'next_point',nextIndex:task.currentIndex+1};
+  };
+  const step=typeof logic.decideNextAutoFeedStepAfterFeed==='function'
+    ?logic.decideNextAutoFeedStepAfterFeed(task)
+    :fallback();
+  task.pauseAfterCurrent=false;
+  task.terminateRequested=false;
+  task.lastCompletedIndex=task.currentIndex;
+  if(step.action==='stop'){
+    stopAutoFeedMission('任务已终止',{stopRobot:false,forceFeedOff:false});
+    return;
+  }
+  if(step.action==='pause'){
+    task.status='paused';
+    renderAutoFeedPanel();
+    L('自动投喂任务已暂停，继续后前往下一个点','w');
+    return;
+  }
+  if(step.action==='go_charge'){
+    beginAutoFeedReturnToCharge();
+    return;
+  }
+  dispatchAutoFeedQueueIndex(step.nextIndex);
+}
+function handleAutoFeedCycleFinished(entry){
+  const task=S.autoFeedTask;
+  if(task.status!=='waiting_feed')return;
+  const current=currentAutoFeedQueueItem();
+  if(!current||!isSameAutoFeedPoint(current,entry))return;
+  advanceAutoFeedAfterFeed();
+}
+function markAutoFeedWaitingForCurrent(entry){
+  const task=S.autoFeedTask;
+  if(task.status!=='running')return;
+  const current=currentAutoFeedQueueItem();
+  if(!current||!isSameAutoFeedPoint(current,entry))return;
+  task.status='waiting_feed';
+  renderAutoFeedPanel();
+}
+function dispatchAutoFeedQueueIndex(index,opts={}){
+  const task=S.autoFeedTask;
+  const next=task.lockedQueue[index];
+  if(!next){stopAutoFeedMission('任务队列异常，找不到下一个点',{error:true,stopRobot:false,forceFeedOff:false});return}
+  task.currentIndex=index;
+  task.status='running';
+  task.failureReason='';
+  renderAutoFeedPanel();
+  L(`自动投喂任务：前往第 ${index+1} 个点 ${next.pointName}`,'i');
+  const started=startRos2NavToPoint(next,{fromAutoFeedTask:true,skipChargeCheck:Boolean(opts.skipChargeCheck)});
+  if(started===false)stopAutoFeedMission(`无法启动导航：${next.pointName}`,{error:true,stopRobot:false,forceFeedOff:false});
+}
+async function startAutoFeedMission(){
+  if(!autoFeedEditable()){L('自动任务已在执行，请勿重复启动','w');return}
+  if(isMappingMode()){L('建图模式下不可启动自动投喂任务','w');return}
+  if(!S.conn){L('未连接 rosbridge，无法启动自动投喂任务','w');return}
+  if(isMapSwitchBusy()){L('切图尚未完成，请等待新地图加载成功后再启动自动任务','w');return}
+  if(!S.autoFeedTask.queue.length){L('请先加入至少一个普通导航点','w');return}
+  const snapshot=S.autoFeedTask.queue.map(item=>({...item}));
+  S.autoFeedTask={
+    queue:S.autoFeedTask.queue.slice(),
+    lockedQueue:snapshot,
+    status:'starting',
+    currentIndex:-1,
+    pauseAfterCurrent:false,
+    terminateRequested:false,
+    failureReason:'',
+    token:S.autoFeedTask.token+1,
+    lastCompletedIndex:-1
+  };
+  const startToken=S.autoFeedTask.token;
+  renderAutoFeedPanel();
+  L(`自动投喂任务启动：共 ${snapshot.length} 个点`,'o');
+  if(isChargingState(S.chg)){
+    L('自动任务启动前先自动脱桩','i');
+    const undocked=await runUndockSequence('自动任务启动前脱桩...');
+    if(!undocked){
+      stopAutoFeedMission('自动脱桩失败，任务未开始',{error:true,stopRobot:false,forceFeedOff:true});
+      return;
+    }
+    if(S.autoFeedTask.token!==startToken||S.autoFeedTask.status!=='starting')return;
+    await sl(600);
+    if(S.autoFeedTask.token!==startToken||S.autoFeedTask.status!=='starting')return;
+    dispatchAutoFeedQueueIndex(0,{skipChargeCheck:true});
+    return;
+  }
+  dispatchAutoFeedQueueIndex(0);
+}
+function pauseAutoFeedMission(){
+  const task=S.autoFeedTask;
+  if(!['running','waiting_feed'].includes(task.status)){L('当前状态不可暂停自动任务','w');return}
+  task.pauseAfterCurrent=true;
+  renderAutoFeedPanel();
+  L('自动投喂任务将在当前点联动完成后暂停','i');
+}
+function resumeAutoFeedMission(){
+  const task=S.autoFeedTask;
+  if(task.status!=='paused'){L('当前状态不可继续自动任务','w');return}
+  task.failureReason='';
+  if(task.currentIndex>=task.lockedQueue.length-1){
+    beginAutoFeedReturnToCharge();
+    return;
+  }
+  dispatchAutoFeedQueueIndex(task.currentIndex+1);
+}
+function syncFeedStatusUi(){
+  const text=S.feedCtl.online?(S.feedCtl.enabled?'运行中':'待机'):'离线';
+  const icon=S.feedCtl.online?(S.feedCtl.enabled?'g':'y'):'x';
+  const cls=S.feedCtl.online?(S.feedCtl.enabled?'':'warn'):'alert';
+  sI('feed',icon,text,cls);
+}
+async function refreshFeedState(silent=false){
+  const apiBaseUrl=normalizeHttpBaseUrl(S.feedCtl.apiBaseUrl);
+  if(!apiBaseUrl){
+    S.feedCtl.online=false;
+    S.feedCtl.enabled=false;
+    syncFeedStatusUi();
+    return false;
+  }
+  try{
+    const resp=await fetch(buildFeedApiUrl('/api/feed'));
+    const data=await resp.json().catch(()=>({}));
+    if(!resp.ok)throw new Error(data.error||`HTTP ${resp.status}`);
+    S.feedCtl.online=true;
+    S.feedCtl.enabled=Boolean(data.enabled);
+    syncFeedStatusUi();
+    return true;
+  }catch(err){
+    S.feedCtl.online=false;
+    S.feedCtl.enabled=false;
+    syncFeedStatusUi();
+    if(!silent)L(`联动状态读取失败: ${err.message}`,'w');
+    return false;
+  }
+}
+function startFeedStatePolling(){
+  if(S.feedCtl.pollTimer)return;
+  refreshFeedState(true);
+  S.feedCtl.pollTimer=setInterval(()=>refreshFeedState(true),1000);
+}
+function shouldTriggerFeedOnOperatedGrowth(previousCount,nextCount){
+  const logic=globalThis.FishbotQueueFeedLogic;
+  if(logic&&typeof logic.shouldTriggerFeedOnOperatedGrowth==='function')return logic.shouldTriggerFeedOnOperatedGrowth(previousCount,nextCount);
+  return Number(nextCount)>Number(previousCount);
+}
+function shouldTriggerFeedOnNavigationArrival(previousNavStatus,nextNavStatus){
+  const logic=globalThis.FishbotQueueFeedLogic;
+  if(logic&&typeof logic.shouldTriggerFeedOnNavigationArrival==='function'){
+    return logic.shouldTriggerFeedOnNavigationArrival({
+      previousNavStatus,
+      nextNavStatus,
+      hasPendingTarget:Boolean(S.feedCtl.pendingNavTarget),
+      hasQueueEchoAfterRequest:Boolean(S.feedCtl.pendingNavHasQueueEcho),
+    });
+  }
+  return Boolean(S.feedCtl.pendingNavTarget)&&!S.feedCtl.pendingNavHasQueueEcho&&Number(previousNavStatus)!==2&&Number(nextNavStatus)===2;
+}
+function clearPendingFeedNavigation(){
+  S.feedCtl.pendingNavTarget=null;
+  S.feedCtl.pendingNavQueueEchoAt=0;
+  S.feedCtl.pendingNavHasQueueEcho=false;
+}
+function classifyQueueEntry(entry){
+  const logic=globalThis.FishbotQueueFeedLogic;
+  if(logic&&typeof logic.classifyQueueEntry==='function')return logic.classifyQueueEntry(entry,knownQueuePoints());
+  const pointName=String(entry?.point_name||entry?.pointName||entry?.name||'');
+  const text=pointName.toLowerCase();
+  return {pointId:Number(entry?.point_id??entry?.pointId??0),pointName,mode:(text.includes('charge')||text.includes('dock')||text.includes('充电'))?1:0,isFeedPoint:!(text.includes('charge')||text.includes('dock')||text.includes('充电'))};
+}
+function decideQueueWaitTimeSeconds(queueData){
+  const logic=globalThis.FishbotQueueFeedLogic;
+  if(logic&&typeof logic.decideQueueWaitTimeSeconds==='function')return logic.decideQueueWaitTimeSeconds(queueData,knownQueuePoints(),S.feedCtl.pauseSeconds);
+  const next=(Array.isArray(queueData?.high_goal_list)&&queueData.high_goal_list[0])||(Array.isArray(queueData?.low_goal_list)&&queueData.low_goal_list[0])||null;
+  return next&&classifyQueueEntry(next).isFeedPoint?S.feedCtl.pauseSeconds:0;
+}
+async function setFeedEnabled(enabled,reason=''){
+  const apiBaseUrl=normalizeHttpBaseUrl(S.feedCtl.apiBaseUrl);
+  if(!apiBaseUrl){
+    if(S.feedCtl.lastWarnedApiUrl!=='empty'){
+      S.feedCtl.lastWarnedApiUrl='empty';
+      L('未配置 RK3588 联动地址，已跳过投料联动','w');
+    }
+    return false;
+  }
+  try{
+    const resp=await fetch(buildFeedApiUrl('/api/feed'),{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({enabled:Boolean(enabled)})
+    });
+    const data=await resp.json().catch(()=>({}));
+    if(!resp.ok)throw new Error(data.error||`HTTP ${resp.status}`);
+    S.feedCtl.online=true;
+    S.feedCtl.enabled=Boolean(data.enabled);
+    syncFeedStatusUi();
+    S.feedCtl.lastWarnedApiUrl='';
+    L(`联动${enabled?'启动':'关闭'}${reason?`：${reason}`:''}`,'o');
+    return true;
+  }catch(err){
+    S.feedCtl.online=false;
+    if(!enabled)S.feedCtl.enabled=false;
+    syncFeedStatusUi();
+    L(`联动${enabled?'启动':'关闭'}失败: ${err.message}`,'e');
+    return false;
+  }
+}
+function buildOperatedEntryKey(entry,opCount){
+  const info=classifyQueueEntry(entry);
+  return `${opCount}|${info.pointId}|${info.pointName}`;
+}
+async function triggerFeedForOperatedEntry(entry,opCount){
+  const info=classifyQueueEntry(entry);
+  const triggerKey=buildOperatedEntryKey(entry,opCount);
+  if(!info.isFeedPoint){
+    S.feedCtl.lastTriggerKey=triggerKey;
+    L(`队列到点跳过联动：${info.pointName||'未命名点'}`,'i');
+    return;
+  }
+  if(S.feedCtl.lastTriggerKey===triggerKey)return;
+  if(S.feedCtl.busy){
+    L(`联动仍在执行，跳过重复触发：${info.pointName||'未命名点'}`,'w');
+    return;
+  }
+  markAutoFeedWaitingForCurrent(entry);
+  S.feedCtl.lastTriggerKey=triggerKey;
+  S.feedCtl.busy=true;
+  if(S.feedCtl.timer){clearTimeout(S.feedCtl.timer);S.feedCtl.timer=null}
+  const started=await setFeedEnabled(true,`到达 ${info.pointName||'普通导航点'}`);
+  if(!started){
+    S.feedCtl.busy=false;
+    if(S.autoFeedTask.status==='waiting_feed'&&isSameAutoFeedPoint(currentAutoFeedQueueItem(),entry)){
+      stopAutoFeedMission(`联动启动失败：${info.pointName||'普通导航点'}`,{error:true,stopRobot:false,forceFeedOff:false});
+    }
+    return;
+  }
+  S.feedCtl.timer=setTimeout(async()=>{
+    const stopped=await setFeedEnabled(false,`完成 ${info.pointName||'普通导航点'} 联动`);
+    S.feedCtl.busy=false;
+    S.feedCtl.timer=null;
+    if(stopped!==false)handleAutoFeedCycleFinished(entry);
+  },S.feedCtl.pauseSeconds*1000);
+}
+function syncVendorQueueWaitPolicy(queueData){
+  const hi=Array.isArray(queueData?.high_goal_list)?queueData.high_goal_list:[];
+  const lo=Array.isArray(queueData?.low_goal_list)?queueData.low_goal_list:[];
+  const op=Array.isArray(queueData?.operated_goal_list)?queueData.operated_goal_list:[];
+  const totalGoals=hi.length+lo.length+op.length;
+  const waitTime=totalGoals>1?decideQueueWaitTimeSeconds(queueData):0;
+  if(S.feedCtl.lastQueueWaitTime===waitTime)return;
+  S.feedCtl.lastQueueWaitTime=waitTime;
+  rAdv('/set_types_target_goal','map_msgs/TargetGoalType');
+  rPub('/set_types_target_goal',{circle:Boolean(queueData?.task_circle),wait_time:waitTime});
+  L(`队列等待策略已更新：${waitTime}s`,'i');
+}
+
+// Tabs
+function stab(i){document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('active',j===i));document.querySelectorAll('.tb').forEach((t,j)=>t.classList.toggle('active',j===i))}
+
+// Connection
+function toggleConn(){S.conn?disc():conn()}
+function conn(){const u=$('wsUrl').value.trim();if(!u)return;L(`连接 ${u}...`,'i');try{S.ws=new WebSocket(u)}catch(e){L('失败:'+e.message,'e');return}
+  S.ws.onopen=()=>{S.conn=true;S.adv.clear();uC();L('✓ rosbridge 已连接','o');subAll();setTimeout(loadMaps,500)};
+  S.ws.onclose=()=>{S.conn=false;S.adv.clear();uC();if(autoFeedWorking())stopAutoFeedMission('rosbridge 连接断开',{error:true,stopRobot:false,forceFeedOff:false});L('连接断开','w')};S.ws.onerror=()=>L('WS错误','e');
+  S.ws.onmessage=e=>{try{dispatch(JSON.parse(e.data))}catch(x){}}}
+function disc(){if(autoFeedWorking())stopAutoFeedMission('已手动断开连接',{error:true,stopRobot:false,forceFeedOff:false});if(S.ws)S.ws.close();S.ws=null;S.conn=false;S.adv.clear();uC()}
+function uC(){const d=$('dot'),l=$('cL'),b=$('bC');if(S.conn){d.classList.add('on');l.textContent='已连接';b.textContent='断开';b.className='b d'}else{d.classList.remove('on');l.textContent='未连接';b.textContent='连接';b.className='b p'}}
+
+// rosbridge
+function rS(o){if(S.ws&&S.ws.readyState===1)S.ws.send(JSON.stringify(o))}
+function rSub(t,tp,r=0){const m={op:'subscribe',id:'s_'+t,topic:t,type:tp};if(r)m.throttle_rate=r;rS(m)}
+function rAdv(t,tp){if(!S.conn||!S.ws||S.ws.readyState!==1)return;const k=`${t}|${tp}`;if(S.adv.has(k))return;rS({op:'advertise',topic:t,type:tp});S.adv.add(k)}
+function rPub(t,m){rS({op:'publish',topic:t,msg:m})}
+function rSrv(s,tp,a,cb){const id='v_'+(++S._ci);rS({op:'call_service',id,service:s,type:tp,args:a||{}});if(cb)S._cb[id]=cb}
+
+function subAll(){
+  rSub('/androidmsg_locationstatus','std_msgs/Int16',500);
+  rSub('/androidmsg_navigationstatus','std_msgs/Int16',200);
+  rSub('/androidmsg_chargestatus','std_msgs/Int16',500);
+  rSub('/androidmsg_emergencystatus','std_msgs/Int16',500);
+  rSub('/androidmsg_motorenabledstatus','std_msgs/Int16',500);
+  rSub('/power_report','std_msgs/Int16',2000);
+  rSub('/tracked_pose','geometry_msgs/PoseStamped',200);
+  rSub('/map','nav_msgs/OccupancyGrid',5000);
+  rSub('/scan','sensor_msgs/LaserScan',150);
+  rSub('/map_status','std_msgs/Int16',1000);
+  rSub('/androidmsg_mapstatus','std_msgs/Int16',1000);
+  rSub('/wall_update','std_msgs/Int32',1000);
+  rSub('/androidmsg_initstatus','std_msgs/Int16',1000);
+  rSub('/navi_target_goal_list','map_msgs/TargetGoalEntryRunList',500);
+  L('已订阅所有topic','i');
+}
+
+function hVendorQueue(d){
+  const hi=Array.isArray(d.high_goal_list)?d.high_goal_list:[];
+  const lo=Array.isArray(d.low_goal_list)?d.low_goal_list:[];
+  const op=Array.isArray(d.operated_goal_list)?d.operated_goal_list:[];
+  const totalGoals=hi.length+lo.length+op.length;
+  const names=[...hi,...lo].map(p=>String(p.point_name||p.pointName||'')).filter(Boolean).join(' -> ');
+  const sig=`${hi.length}|${lo.length}|${op.length}|${Boolean(d.task_circle)}|${names}`;
+  S.vendorQueueEchoAt=Date.now();
+  if(S.feedCtl.pendingNavTarget&&S.vendorQueueEchoAt>S.feedCtl.pendingNavQueueEchoAt){
+    S.feedCtl.pendingNavHasQueueEcho=true;
+  }
+  S.feedCtl.queueArmed=totalGoals>1;
+  if(op.length<S.feedCtl.lastOperatedCount){
+    S.feedCtl.lastOperatedCount=op.length;
+    S.feedCtl.lastTriggerKey='';
+  }
+  syncVendorQueueWaitPolicy(d);
+  if(shouldTriggerFeedOnOperatedGrowth(S.feedCtl.lastOperatedCount,op.length)&&op.length){
+    const latest=op[op.length-1];
+    S.feedCtl.lastOperatedCount=op.length;
+    triggerFeedForOperatedEntry(latest,op.length);
+  }else{
+    S.feedCtl.lastOperatedCount=op.length;
+  }
+  if(sig===S.vendorQueueSig)return;
+  S.vendorQueueSig=sig;
+  L(`新版队列回显：高优先${hi.length} 低优先${lo.length} 已执行${op.length}${names?` | ${names}`:''}`,'i');
+}
+
+function dispatch(msg){
+  if(msg.op==='service_response'){if(S._cb[msg.id]){S._cb[msg.id](msg);delete S._cb[msg.id]}return}
+  if(msg.op!=='publish')return;
+  const d=msg.msg;
+  switch(msg.topic){
+    case '/androidmsg_locationstatus':S.loc=d.data;uSt();break;
+    case '/androidmsg_navigationstatus':{
+      const prevNav=S.nav;
+      S.nav=d.data;
+      const logic=getAutoFeedLogic();
+      const ignoredStatuses=currentSuppressedNavigationStatuses();
+      const shouldStop=typeof logic.shouldStopAutoFeedOnNavigationStatus==='function'
+        ?logic.shouldStopAutoFeedOnNavigationStatus(S.nav,{ignoredStatuses})
+        :[3,8,51,52,84].includes(Number(S.nav));
+      if(shouldTriggerFeedOnNavigationArrival(prevNav,S.nav)){
+        const target=S.feedCtl.pendingNavTarget;
+        clearPendingFeedNavigation();
+        if(target)triggerFeedForOperatedEntry(target,Date.now());
+      }else if(shouldStop){
+        clearPendingFeedNavigation();
+      }
+      if(shouldStop&&['running','waiting_feed','returning_charge'].includes(S.autoFeedTask.status)){
+        stopAutoFeedMission(`导航失败：${NT[S.nav]||S.nav}`,{error:true,stopRobot:false,forceFeedOff:true});
+      }
+      uSt();
+      renderAutoFeedPanel();
+      break;
+    }
+    case '/androidmsg_chargestatus':{
+      const prev=S.chg;
+      S.chg=d.data;
+      uSt();
+      if(prev!==S.chg)onChargeStateChanged(prev,S.chg);
+      break;
+    }
+    case '/androidmsg_emergencystatus':S.ems=d.data;uSt();break;
+    case '/androidmsg_motorenabledstatus':S.mot=d.data;uSt();break;
+    case '/power_report':S.bat=d.data;uSt();break;
+    case '/tracked_pose':hPose(d);break;
+    case '/map':hMap(d);break;
+    case '/scan':hScan(d);break;
+    case '/map_status':hMode(d.data);break;
+    case '/androidmsg_mapstatus':if(d.data===60)L('地图&点加载成功','o');if(d.data===61)L('地图加载失败!','e');break;
+    case '/wall_update':L('墙体更新','i');break;
+    case '/androidmsg_initstatus':if(d.data===12)L('初始化成功','o');if(d.data===11)L('初始化失败','e');break;
+    case '/navi_target_goal_list':hVendorQueue(d);break;
+  }
+}
+
+function isChargingState(code){return [45,46,47,48].includes(code)}
+function isMappingMode(){return S.mapMode===1||S.mapMode===2}
+
+function onChargeStateChanged(prev,next){
+  if(isChargingState(next)&&!isChargingState(prev)){
+    L(`检测到充电状态 ${next}，准备自动记录初始点`,'i');
+    maybeAutoCreateDockPoints();
+  }
+
+  if(S.navRun.active&&S.navRun.isChargeTask&&isChargingState(next)){
+    finishAutoNav(true,'已检测到充电，回充完成');
+  }
+  if(S.autoFeedTask.status==='returning_charge'&&isChargingState(next)){
+    S.autoFeedTask={
+      queue:S.autoFeedTask.queue.slice(),
+      lockedQueue:[],
+      status:'completed',
+      currentIndex:-1,
+      pauseAfterCurrent:false,
+      terminateRequested:false,
+      failureReason:'',
+      token:S.autoFeedTask.token,
+      lastCompletedIndex:S.autoFeedTask.lastCompletedIndex
+    };
+    renderAutoFeedPanel();
+    L('自动投喂任务完成，已进入充电状态','o');
+  }
+}
+
+function hScan(d){
+  if(!d||!Array.isArray(d.ranges)||d.ranges.length===0)return;
+  const minFront=minScanWindow(d,-0.18,0.18);
+  const left=minScanWindow(d,0.18,0.60);
+  const right=minScanWindow(d,-0.60,-0.18);
+  S.scan={minFront,left,right,stamp:Date.now()};
+  const blocked=Number.isFinite(minFront)&&minFront<0.42;
+  if(blocked){
+    S.frontObs=true;
+    S.lastObstacleAt=Date.now();
+  }else if(S.frontObs&&Date.now()-S.lastObstacleAt>350){
+    S.frontObs=false;
+  }
+}
+
+function minScanWindow(scan,minAngle,maxAngle){
+  if(!scan||!Array.isArray(scan.ranges)||!scan.ranges.length)return Infinity;
+  const angleMin=Number(scan.angle_min||0);
+  const angleInc=Number(scan.angle_increment||0);
+  const rangeMin=Number(scan.range_min||0);
+  const rangeMax=Number(scan.range_max||0);
+  let best=Infinity;
+  for(let i=0;i<scan.ranges.length;i++){
+    const angle=angleMin+angleInc*i;
+    if(angle<minAngle||angle>maxAngle)continue;
+    const v=Number(scan.ranges[i]);
+    if(!Number.isFinite(v))continue;
+    if(rangeMin>0&&v<rangeMin)continue;
+    if(rangeMax>0&&v>rangeMax)continue;
+    if(v<best)best=v;
+  }
+  return best;
+}
+
+// Status
+const LT={0:'未知',9:'丢失',10:'正常'};
+const NT={0:'空闲',1:'导航中',2:'到达',3:'失败',4:'恢复中',5:'停止中',6:'找不到点',7:'已停止',8:'路径超时',51:'充电失败',52:'无充电点',83:'已取消',84:'位置丢失'};
+const CT={0:'未知',41:'未充电',44:'失败',45:'自动充电',46:'手动充电',47:'自动完成',48:'手动完成'};
+const ET={0:'未知',31:'急停!',32:'正常'};const MT={0:'未知',33:'未使能',34:'已使能'};
+function uSt(){
+  sI('loc',S.loc===10?'g':S.loc===9?'r':'x',LT[S.loc]||S.loc,S.loc===9?'alert':'');
+  const n=S.nav;sI('nav',n===1?'y':n===2?'g':(n===3||n===8)?'r':'x',NT[n]||n,(n===3||n===8)?'alert':n===1?'warn':'');
+  const c=S.chg;const ic=[45,46].includes(c);sI('chg',ic?'y':c===44?'r':c===41?'g':'x',CT[c]||c,c===44?'alert':ic?'warn':'');$('si-chg').classList.toggle('charging',ic);
+  sI('ems',S.ems===32?'g':S.ems===31?'r':'x',ET[S.ems]||S.ems,S.ems===31?'alert':'');
+  sI('mot',S.mot===34?'g':S.mot===33?'y':'x',MT[S.mot]||S.mot,S.mot===33?'warn':'');
+  const b=S.bat;sI('bat',b>40?'g':b>15?'y':b>=0?'r':'x',b>=0?b+'%':'--',b>=0&&b<=15?'alert':'');
+  syncFeedStatusUi();
+  syncMobileMapChrome();
+}
+function sI(k,i,t,c){$('ic-'+k).className='si-i '+i;$('v-'+k).textContent=t;$('si-'+k).className='si '+(c||'')}
+
+// Map mode
+function hMode(v){
+  if((v===1||v===2)&&autoFeedWorking())stopAutoFeedMission('切换到建图模式',{stopRobot:true,forceFeedOff:true});
+  S.mapMode=v;const el=$('mI'),bar=$('mapBar');
+  if(v===0){el.className='mode-b nav';el.textContent='导航模式';bar.classList.remove('show')}
+  else if(v===1){el.className='mode-b map';el.textContent='🔨 建图模式';bar.classList.add('show')}
+  else if(v===2){el.className='mode-b ext';el.textContent='📐 扩展地图';bar.classList.add('show')}
+  if(v===1||v===2){
+    S.autoPt={charge:false,initial:false,busy:false,lastTryAt:0};
+    if(isChargingState(S.chg))setTimeout(maybeAutoCreateDockPoints,250);
+  }
+  syncSaveButtons();
+  syncMobileMapChrome();
+}
+
+function syncMobileMapChrome(){
+  const name=S.curMp!=null
+    ? `${currentFloorName()||'楼层'} / ${currentMapName()||'当前地图'}`
+    : (S.mapInfo ? '当前地图已加载' : '未加载地图');
+  const modeText=S.mapMode===1?'建图模式':(S.mapMode===2?'扩展地图':'导航模式');
+  const dims=S.mapInfo?`尺寸 ${S.mapInfo.width}×${S.mapInfo.height} · ${S.mapInfo.resolution.toFixed(3)}m`:'等待地图数据';
+  $('mapTitleMini').textContent=name;
+  $('mapMetaMini').textContent=dims;
+  $('mapModeMini').textContent=modeText;
+  $('mapDimsMini').textContent=dims;
+  $('mapPoseMini').textContent=S.hasPose
+    ? `X ${S.pX.toFixed(2)}  Y ${S.pY.toFixed(2)}  θ ${S.pYaw.toFixed(1)}°`
+    : `定位 ${LT[S.loc]||'--'} · 导航 ${NT[S.nav]||'--'}`;
+}
+
+// Pose — ALWAYS track, show even during mapping mode
+function hPose(d){
+  const p=d.pose.position,q=d.pose.orientation;
+  S.pX=p.x;S.pY=p.y;S.hasPose=true;
+  S.pYaw=Math.atan2(2*(q.w*q.z+q.x*q.y),1-2*(q.y*q.y+q.z*q.z))*180/Math.PI;
+  $('px').textContent=S.pX.toFixed(2);$('py').textContent=S.pY.toFixed(2);$('pt').textContent=S.pYaw.toFixed(1);
+  $('poseBdg').textContent=`X:${S.pX.toFixed(2)} Y:${S.pY.toFixed(2)} θ:${S.pYaw.toFixed(1)}°`;
+  syncMobileMapChrome();
+  if(isMappingMode()&&isChargingState(S.chg))maybeAutoCreateDockPoints();
+  renderMap();
+}
+
+// Map rendering
+function hMap(d){
+  S.mapData=d;S.mapInfo=d.info;
+  if(isMapSwitchBusy())S.mapSwitch={inFlight:false,targetFloorId:null,targetMapId:null,startedAt:0};
+  const w=d.info.width,h=d.info.height;
+  L(`地图 ${w}×${h}`,'o');
+  $('mapBdg').textContent=`${w}×${h} | ${d.info.resolution.toFixed(3)}m`;
+  syncMobileMapChrome();
+  const c=$('mapCanvas');c.width=w;c.height=h;
+  const ctx=c.getContext('2d'),img=ctx.createImageData(w,h),raw=d.data;
+  for(let r=0;r<h;r++)for(let cl=0;cl<w;cl++){
+    const si=r*w+cl,dr=h-1-r,di=(dr*w+cl)*4,v=raw[si];
+    let R,G,B;
+    if(v===-1){R=237;G=242;B=247}
+    else if(v===0){R=216;G=224;B=233}
+    else if(v>=100){R=41;G=49;B=61}
+    else{const t=1-v/100;R=41+t*175|0;G=49+t*181|0;B=61+t*185|0}
+    img.data[di]=R;img.data[di+1]=G;img.data[di+2]=B;img.data[di+3]=255;
+  }
+  S.mapImg=img;resetView();renderMap();
+}
+
+function renderMap(){
+  const c=$('mapCanvas');if(!S.mapImg||!S.mapInfo)return;
+  const ctx=c.getContext('2d'),w=S.mapInfo.width,h=S.mapInfo.height;
+  const compact=isLandscapePhone();
+  const pointRadius=compact?2.4:3;
+  const labelFont=compact?6:7;
+  const labelPadX=compact?3:4;
+  const labelHeight=compact?9:10;
+  c.width=w;c.height=h;ctx.clearRect(0,0,w,h);ctx.putImageData(S.mapImg,0,0);
+  const info=S.mapInfo,o=info.origin.position,res=info.resolution;
+  ctx.imageSmoothingEnabled=true;
+
+  visiblePts().forEach(pt=>{
+    if(pt.positionx===undefined)return;
+    const px=(pt.positionx-o.x)/res,py=h-(pt.positiony-o.y)/res;
+    const fill=pt._m===1?'#1f9d61':pt._m===2?'#6f63d9':'#d98912';
+    const label=(pt.pointName||'')+(pt._staged?'*':'');
+    const layout=pt._m===1?{dx:-8,dy:12,align:'right'}:(pt._m===2?{dx:8,dy:-12,align:'left'}:{dx:0,dy:-12,align:'center'});
+    ctx.save();ctx.translate(px,py);
+    ctx.beginPath();ctx.arc(0,0,pointRadius,0,Math.PI*2);
+    ctx.fillStyle=fill;ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.95)';ctx.lineWidth=.85;ctx.stroke();
+    if(label){
+      ctx.font=`600 ${labelFont}px "IBM Plex Sans", "PingFang SC", sans-serif`;
+      ctx.textAlign=layout.align;
+      ctx.textBaseline='middle';
+      const tw=Math.ceil(ctx.measureText(label).width);
+      const anchorX=layout.dx;
+      const anchorY=layout.dy;
+      let left=anchorX-tw/2-labelPadX;
+      if(layout.align==='left')left=anchorX-2;
+      if(layout.align==='right')left=anchorX-tw-(labelPadX+2);
+      ctx.fillStyle='rgba(255,255,255,.84)';
+      ctx.strokeStyle='rgba(200,210,222,.88)';
+      ctx.lineWidth=.6;
+      ctx.beginPath();ctx.rect(left,anchorY-labelHeight/2,tw+labelPadX*2,labelHeight);ctx.fill();ctx.stroke();
+      ctx.fillStyle='#243241';
+      ctx.fillText(label,anchorX,anchorY+.5);
+    }
+    ctx.restore();
+  });
+
+  if(S.navRun.active&&Array.isArray(S.navRun.path)&&S.navRun.path.length>1){
+    ctx.save();
+    ctx.beginPath();
+    S.navRun.path.forEach((wp,idx)=>{
+      const px=(wp.x-o.x)/res,py=h-(wp.y-o.y)/res;
+      if(idx===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+    });
+    ctx.strokeStyle=S.navRun.paused?'#d3a226':'#246bdb';
+    ctx.lineWidth=1.3;
+    ctx.setLineDash([4,3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const last=S.navRun.path[S.navRun.path.length-1];
+    const tx=(last.x-o.x)/res,ty=h-(last.y-o.y)/res;
+    ctx.beginPath();ctx.arc(tx,ty,4.5,0,Math.PI*2);
+    ctx.fillStyle=S.navRun.isChargeTask?'#1f9d61':'#d98912';
+    ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.94)';
+    ctx.lineWidth=.8;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if(Array.isArray(S.ros2Plan)&&S.ros2Plan.length>1){
+    ctx.save();
+    ctx.beginPath();
+    S.ros2Plan.forEach((wp,idx)=>{
+      const px=(wp.x-o.x)/res,py=h-(wp.y-o.y)/res;
+      if(idx===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+    });
+    ctx.strokeStyle='#12b76a';
+    ctx.lineWidth=1.6;
+    ctx.setLineDash([5,3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const last=S.ros2Plan[S.ros2Plan.length-1];
+    if(last){
+      const tx=(last.x-o.x)/res,ty=h-(last.y-o.y)/res;
+      ctx.beginPath();ctx.arc(tx,ty,4,0,Math.PI*2);
+      ctx.fillStyle='#12b76a';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  if(Array.isArray(S.ros2LocalPlan)&&S.ros2LocalPlan.length>1){
+    ctx.save();
+    ctx.beginPath();
+    S.ros2LocalPlan.forEach((wp,idx)=>{
+      const px=(wp.x-o.x)/res,py=h-(wp.y-o.y)/res;
+      if(idx===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+    });
+    ctx.strokeStyle='#f79009';
+    ctx.lineWidth=1.3;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if(S.hasPose&&S.mapInfo){
+    const px=(S.pX-o.x)/res,py=h-(S.pY-o.y)/res;
+    if(px>-50&&px<w+50&&py>-50&&py<h+50){
+      ctx.save();ctx.translate(px,py);
+      ctx.beginPath();ctx.arc(0,0,6,0,Math.PI*2);
+      ctx.fillStyle=S.loc===10?'rgba(36,107,219,.14)':'rgba(216,77,69,.14)';ctx.fill();
+      ctx.beginPath();ctx.arc(0,0,3.8,0,Math.PI*2);
+      ctx.fillStyle=S.loc===10?'rgba(36,107,219,.88)':'rgba(216,77,69,.76)';
+      ctx.fill();ctx.strokeStyle='rgba(255,255,255,.96)';ctx.lineWidth=1.1;ctx.stroke();
+      const yr=-S.pYaw*Math.PI/180;ctx.rotate(yr);
+      ctx.beginPath();ctx.moveTo(8,0);ctx.lineTo(2.4,-2.7);ctx.lineTo(2.4,2.7);ctx.closePath();
+      ctx.fillStyle=S.loc===10?'#246bdb':'#d84d45';ctx.fill();
+      ctx.restore();
+    }
+  }
+  c.style.transformOrigin='0 0';c.style.transform=`translate(${S.ox}px,${S.oy}px) scale(${S.sc})`;
+}
+
+function resetView(){if(!S.mapInfo)return;const a=$('mapArea'),aw=a.clientWidth,ah=a.clientHeight,w=S.mapInfo.width,h=S.mapInfo.height;S.sc=Math.min(aw/w,ah/h)*.88;S.ox=(aw-w*S.sc)/2;S.oy=(ah-h*S.sc)/2;renderMap()}
+function zoomMap(f){const a=$('mapArea'),cx=a.clientWidth/2,cy=a.clientHeight/2,old=S.sc;S.sc=Math.max(.05,Math.min(30,old*f));const r=S.sc/old;S.ox=cx-r*(cx-S.ox);S.oy=cy-r*(cy-S.oy);renderMap()}
+
+// Pan/zoom
+(function(){let dr=false,lx,ly,downX=0,downY=0,moved=false;const a=$('mapArea');
+  a.addEventListener('mousedown',e=>{dr=true;lx=e.clientX;ly=e.clientY;downX=e.clientX;downY=e.clientY;moved=false;a.style.cursor='grabbing'});
+  window.addEventListener('mousemove',e=>{if(!dr)return;const dx=e.clientX-downX,dy=e.clientY-downY;if(dx*dx+dy*dy>16)moved=true;S.ox+=e.clientX-lx;S.oy+=e.clientY-ly;lx=e.clientX;ly=e.clientY;renderMap()});
+  window.addEventListener('mouseup',e=>{if(dr&&!moved)handleMapClick(e.clientX,e.clientY);dr=false;a.style.cursor=''});
+  a.addEventListener('wheel',e=>{e.preventDefault();zoomMap(e.deltaY<0?1.12:1/1.12)},{passive:false});
+  let td=0;
+  a.addEventListener('touchstart',e=>{if(e.touches.length===1){dr=true;lx=e.touches[0].clientX;ly=e.touches[0].clientY}else if(e.touches.length===2){dr=false;td=Math.hypot(e.touches[1].clientX-e.touches[0].clientX,e.touches[1].clientY-e.touches[0].clientY)}});
+  a.addEventListener('touchmove',e=>{e.preventDefault();if(e.touches.length===1&&dr){S.ox+=e.touches[0].clientX-lx;S.oy+=e.touches[0].clientY-ly;lx=e.touches[0].clientX;ly=e.touches[0].clientY;renderMap()}else if(e.touches.length===2){const d=Math.hypot(e.touches[1].clientX-e.touches[0].clientX,e.touches[1].clientY-e.touches[0].clientY);if(td>0)zoomMap(d/td);td=d}},{passive:false});
+  a.addEventListener('touchend',()=>{dr=false;td=0});
+})();
+
+// Joystick
+(function(){const base=$('jB'),h=$('jH');const R=55;
+  function up(dx,dy){const d=Math.hypot(dx,dy);if(d>R){dx=dx/d*R;dy=dy/d*R}h.style.left=`calc(50% + ${dx}px)`;h.style.top=`calc(50% + ${dy}px)`;S.cmdL=-dy/R*S.maxSpd;S.cmdA=-dx/R*S.maxAng;uSpd()}
+  function rs(){h.style.left='50%';h.style.top='50%';h.classList.remove('on');S.cmdL=0;S.cmdA=0;uSpd();sBurst()}
+  let dr=false;
+  base.addEventListener('mousedown',e=>{e.preventDefault();dr=true;h.classList.add('on');const r=base.getBoundingClientRect();up(e.clientX-r.left-r.width/2,e.clientY-r.top-r.height/2);startCmd()});
+  window.addEventListener('mousemove',e=>{if(!dr)return;const r=base.getBoundingClientRect();up(e.clientX-r.left-r.width/2,e.clientY-r.top-r.height/2)});
+  window.addEventListener('mouseup',()=>{if(dr){dr=false;rs();stopCmd()}});
+  base.addEventListener('touchstart',e=>{e.preventDefault();dr=true;h.classList.add('on');const r=base.getBoundingClientRect(),t=e.touches[0];up(t.clientX-r.left-r.width/2,t.clientY-r.top-r.height/2);startCmd()},{passive:false});
+  base.addEventListener('touchmove',e=>{e.preventDefault();if(!dr)return;const r=base.getBoundingClientRect(),t=e.touches[0];up(t.clientX-r.left-r.width/2,t.clientY-r.top-r.height/2)},{passive:false});
+  base.addEventListener('touchend',e=>{e.preventDefault();if(dr){dr=false;rs();stopCmd()}});
+})();
+
+// Keyboard
+(function(){
+  document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;const k=e.key.toLowerCase();if(['w','a','s','d',' '].includes(k)){e.preventDefault();if(k===' '){eStop();return}if(!S.keys.has(k)){S.keys.add(k);uKbd();if(S.keys.size===1)startCmd()}}});
+  document.addEventListener('keyup',e=>{const k=e.key.toLowerCase();if(S.keys.has(k)){S.keys.delete(k);uKbd();if(S.keys.size===0){S.cmdL=0;S.cmdA=0;uSpd();sBurst();stopCmd()}}});
+})();
+function uKbd(){let l=0,a=0;if(S.keys.has('w'))l+=S.maxSpd;if(S.keys.has('s'))l-=S.maxSpd;if(S.keys.has('a'))a+=S.maxAng;if(S.keys.has('d'))a-=S.maxAng;S.cmdL=l;S.cmdA=a;uSpd()}
+function uSpd(){$('dL').textContent=S.cmdL.toFixed(2);$('dA').textContent=S.cmdA.toFixed(2)}
+
+function startCmd(){if(autoFeedWorking())stopAutoFeedMission('手动摇杆接管',{stopRobot:false,forceFeedOff:true});if(S.navRun.active)finishAutoNav(false,'手动接管');if(S.cmdT)return;S.cmdT=setInterval(()=>pV(S.cmdL,S.cmdA),100)}
+function stopCmd(){if(S.cmdT){clearInterval(S.cmdT);S.cmdT=null}}
+function pV(l,a){rPub('/cmd_vel',{linear:{x:l,y:0,z:0},angular:{x:0,y:0,z:a}})}
+function sBurst(){for(let i=0;i<5;i++)setTimeout(()=>pV(0,0),i*50)}
+$('sS').addEventListener('input',e=>{S.maxSpd=parseFloat(e.target.value);S.maxAng=S.maxSpd*3;$('sV').textContent=S.maxSpd.toFixed(2)});
+
+// Quick actions
+function clearPendingNavResume(){S.navResume=null}
+function finishUndockUi(){
+  const b=$('bU');
+  setTimeout(()=>{
+    S.undocking=false;
+    if(b){
+      b.disabled=false;
+      b.textContent='⚡ 脱桩';
+    }
+  },1500);
+}
+async function runUndockSequence(startMsg){
+  if(S.undocking)return false;
+  S.undocking=true;
+  const b=$('bU');
+  if(b){
+    b.disabled=true;
+    b.textContent='⏳ 脱桩...';
+  }
+  L(startMsg||'脱桩开始...','i');
+  finishAutoNav(false,'脱桩接管导航');
+  rPub('/outofcharge',{data:1});
+  await sl(200);
+  // The firmware often reports "cancelled/stopping" right after this stop command.
+  // During controlled undock this is expected and must not abort auto-feed.
+  suppressNavigationStatuses([5,83],2500);
+  rPub('/navi_stop',{data:5});
+  await sl(100);
+  pV(0,0);
+  await sl(100);
+  L('前进脉冲 0.25m/s×400ms','i');
+  const t0=Date.now();
+  while(Date.now()-t0<400){
+    pV(.25,0);
+    await sl(100);
+  }
+  sBurst();
+  L('✓ 脱桩完成','o');
+  finishUndockUi();
+  return true;
+}
+async function undock(){
+  clearPendingNavResume();
+  await runUndockSequence('脱桩开始...');
+}
+function resumePendingNav(pending){
+  if(!pending)return;
+  if(pending.mode==='vendor_point'){
+    startVendorNavToPoint(pending.target,{
+      skipChargeCheck:true,
+      fromAutoFeedTask:Boolean(pending.fromAutoFeedTask),
+      fromAutoFeedReturn:Boolean(pending.fromAutoFeedReturn)
+    });
+    return;
+  }
+  startAutoNav(pending.target,Boolean(pending.isChargeTask),{skipChargeCheck:true});
+}
+async function queueNavAfterUndock(target,mode='self',extra={}){
+  S.navResume={target,mode,...extra};
+  if(S.undocking){
+    L(`当前正在脱桩，完成后前往 ${target.pointName}`,'i');
+    return;
+  }
+  L(`当前处于充电状态，先脱桩再前往 ${target.pointName}`,'i');
+  const started=await runUndockSequence('脱桩开始...');
+  if(!started)return;
+  const pending=S.navResume;
+  setTimeout(()=>{
+    if(!S.navResume||S.navResume!==pending)return;
+    S.navResume=null;
+    resumePendingNav(pending);
+  },600);
+}
+function startRos2NavToPoint(targetPoint,opts={}){
+  const target=normalizePoint(targetPoint);
+  if(!target){L('目标点无效','e');return false}
+  if(target.mapId&&S.curMp&&target.mapId!==S.curMp){
+    L(`目标点属于地图 ${target.mapId}，当前地图是 ${S.curMp}，请先切换地图`,'e');
+    return false;
+  }
+  if(!opts.fromAutoFeedTask&&!opts.fromAutoFeedReturn&&autoFeedWorking()){
+    stopAutoFeedMission('切换为手动单点导航',{stopRobot:false,forceFeedOff:true});
+  }
+  clearPendingNavResume();
+  finishAutoNav(false,'切换为 ROS2 导航');
+  S.feedCtl.pendingNavTarget={
+    point_id:Number(target.pointid),
+    point_name:String(target.pointName||''),
+    pointId:Number(target.pointid),
+    pointName:String(target.pointName||''),
+    floorId:Number(target.floorId||S.curFl||0),
+    mapId:Number(target.mapId||S.curMp||0),
+    autoFeedTask:Boolean(opts.fromAutoFeedTask),
+  };
+  S.feedCtl.pendingNavHasQueueEcho=false;
+  const yaw=Number(target.positionyaw||0)*Math.PI/180;
+  L(`下发 ROS2 导航：${target.pointName}`,'i');
+  fetch('http://127.0.0.1:8088/api/goal',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({x:Number(target.positionx),y:Number(target.positiony),yaw})
+  }).then(r=>r.json()).then(r=>{
+    if(r&&r.error){
+      L('导航失败：'+(r.error||'未知错误'),'e');
+      if(autoFeedWorking())stopAutoFeedMission('导航失败：'+(r.error||'未知错误'),{error:true,stopRobot:false,forceFeedOff:true});
+    }else{
+      L(`✓ ROS2 导航已下发：${target.pointName}`,'o');
+    }
+  }).catch(e=>{
+    L('导航失败：'+e.message,'e');
+    if(autoFeedWorking())stopAutoFeedMission('导航失败：'+e.message,{error:true,stopRobot:false,forceFeedOff:true});
+  });
+  return true;
+}
+function startVendorNavToPoint(targetPoint,opts={}){
+  if(!S.conn){L('未连接','w');return false}
+  const target=normalizePoint(targetPoint);
+  if(!target){L('目标点无效','e');return false}
+  if(!target.pointid){L('目标点缺少 point_id，无法走原厂导航','e');return false}
+  if(target.mapId&&S.curMp&&target.mapId!==S.curMp){
+    L(`目标点属于地图 ${target.mapId}，当前地图是 ${S.curMp}，请先切换地图`,'e');
+    return false;
+  }
+  if(isChargingState(S.chg)&&!opts.skipChargeCheck){
+    queueNavAfterUndock(target,'vendor_point',{fromAutoFeedTask:Boolean(opts.fromAutoFeedTask),fromAutoFeedReturn:Boolean(opts.fromAutoFeedReturn)});
+    return true;
+  }
+  clearPendingNavResume();
+  if(!opts.fromAutoFeedTask&&!opts.fromAutoFeedReturn&&autoFeedWorking())stopAutoFeedMission('切换为手动单点导航',{stopRobot:false,forceFeedOff:true});
+  finishAutoNav(false,'切换为原厂导航');
+  const goalMsg={goal_point_list:[{
+    type:0,
+    floor_id:Number(target.floorId||S.curFl||0),
+    map_id:Number(target.mapId||S.curMp||0),
+    point_id:Number(target.pointid),
+    point_name:String(target.pointName||'')
+  }]};
+  const queueEchoAt=S.vendorQueueEchoAt;
+  const reqId=++S.vendorQueueReq;
+  S.feedCtl.pendingNavTarget={
+    point_id:Number(target.pointid),
+    point_name:String(target.pointName||''),
+    pointId:Number(target.pointid),
+    pointName:String(target.pointName||''),
+    floorId:Number(target.floorId||S.curFl||0),
+    mapId:Number(target.mapId||S.curMp||0),
+    autoFeedTask:Boolean(opts.fromAutoFeedTask),
+  };
+  S.feedCtl.pendingNavQueueEchoAt=queueEchoAt;
+  S.feedCtl.pendingNavHasQueueEcho=false;
+  rAdv('/set_types_target_goal','map_msgs/TargetGoalType');
+  rPub('/set_types_target_goal',{circle:false,wait_time:0});
+  S.feedCtl.lastQueueWaitTime=0;
+  rAdv('add_target_goals','map_msgs/TargetGoalEntryList');
+  rPub('add_target_goals',goalMsg);
+  setTimeout(()=>{
+    if(reqId!==S.vendorQueueReq)return;
+    if(S.vendorQueueEchoAt>queueEchoAt)return;
+    L('新版队列暂未回显，补发 /add_target_goals 兼容模式','w');
+    rAdv('/add_target_goals','map_msgs/TargetGoalEntryList');
+    rPub('/add_target_goals',goalMsg);
+  },1200);
+  L(`已切换新版原厂导航：${target.pointName}`,'o');
+  renderAutoFeedPanel();
+  return true;
+}
+function startVendorCharge(opts={}){
+  if(!S.conn){L('未连接','w');return false}
+  clearPendingNavResume();
+  if(!opts.fromAutoFeedTask&&autoFeedWorking())stopAutoFeedMission('切换为手动回充',{stopRobot:false,forceFeedOff:true});
+  finishAutoNav(false,'切换为原厂回充');
+  rAdv('autocharge','std_msgs/Int16');
+  rPub('autocharge',{data:1});
+  L('已切换原厂回充','o');
+  return true;
+}
+function eStop(){if(autoFeedWorking())stopAutoFeedMission('已急停',{stopRobot:false,forceFeedOff:true});clearPendingNavResume();finishAutoNav(false,'已急停');stopCmd();S.cmdL=0;S.cmdA=0;uSpd();rPub('/navi_stop',{data:5});sBurst()}
+function exitNav(){if(autoFeedWorking())stopAutoFeedMission('已退出导航',{stopRobot:false,forceFeedOff:true});clearPendingNavResume();finishAutoNav(false,'已退出自研导航');L('退出导航...','i');rPub('/navi_stop',{data:5});rSrv('/set_mode','map_msgs/SetMode',{mode:0},()=>L('set_mode(0)','i'));setTimeout(()=>pV(0,0),200);L('✓ 退出导航','o')}
+function stopNav(){if(autoFeedWorking())stopAutoFeedMission('已停止导航',{stopRobot:false,forceFeedOff:true});clearPendingNavResume();finishAutoNav(false,'已停止导航');rPub('/navi_stop',{data:5});sBurst();L('✓ 导航停止','o')}
+function autoChg(opts={}){
+  const target=findPointByMode(1,true);
+  if(!target){L('当前地图没有充电点，请先切换到正确地图','e');return false}
+  if(!opts.fromAutoFeedTask&&autoFeedWorking())stopAutoFeedMission('切换为手动回充',{stopRobot:false,forceFeedOff:true});
+  L(`启动原厂回充：${target.pointName}`,'i');
+  return startVendorCharge(opts);
+}
+function reboot(){modal('底盘重启','确定重启底盘？会导致暂时断连。',false,()=>{rSrv('/robot_ssh','map_msgs/RobotSsh',{instruction:'reboot'},()=>L('重启指令已发','w'));cModal()})}
+function relocate(){L('重定位...','i');rPub('/initialpose',{header:{frame_id:'map'},pose:{pose:{position:{x:S.pX,y:S.pY,z:0},orientation:{x:0,y:0,z:Math.sin(S.pYaw*Math.PI/360),w:Math.cos(S.pYaw*Math.PI/360)}},covariance:new Array(36).fill(0)}});L('✓ 重定位请求已发','o')}
+function sl(ms){return new Promise(r=>setTimeout(r,ms))}
+
+function startRos2Stream(){
+  if(S.ros2Stream){
+    try{S.ros2Stream.close()}catch(e){}
+    S.ros2Stream=null;
+  }
+  try{
+    const es=new EventSource('http://127.0.0.1:8088/api/stream');
+    es.onmessage=e=>{
+      try{
+        const msg=JSON.parse(e.data);
+        if(!msg||!msg.k)return;
+        const k=msg.k,v=msg.v;
+        if(k==='plan')S.ros2Plan=Array.isArray(v)?v:[];
+        else if(k==='local_plan')S.ros2LocalPlan=Array.isArray(v)?v:[];
+        else if(k==='status'){
+          const prev=S.ros2Status;
+          S.ros2Status=v||'idle';
+          handleRos2Status(prev,S.ros2Status);
+        }
+        else if(k==='goal')S.ros2Goal=v;
+        renderMap();
+      }catch(err){}
+    };
+    es.onerror=()=>{
+      try{es.close()}catch(err){}
+      S.ros2Stream=null;
+      setTimeout(startRos2Stream,2000);
+    };
+    S.ros2Stream=es;
+  }catch(e){
+    S.ros2Stream=null;
+    setTimeout(startRos2Stream,2000);
+  }
+}
+
+function handleRos2Status(prev,next){
+  if(next==='succeeded'&&prev!=='succeeded'){
+    const target=S.feedCtl.pendingNavTarget;
+    if(target){
+      clearPendingFeedNavigation();
+      triggerFeedForOperatedEntry(target,Date.now());
+    }
+  }else if((next==='aborted'||next==='cancelled')&&prev!==next){
+    if(autoFeedWorking()){
+      fetch('http://127.0.0.1:8088/api/state').then(r=>r.json()).then(st=>{
+        stopAutoFeedMission('导航失败：'+(st.nav_error||'ROS2 导航中止'),{error:true,stopRobot:false,forceFeedOff:true});
+      }).catch(()=>{
+        stopAutoFeedMission('导航失败：ROS2 导航中止',{error:true,stopRobot:false,forceFeedOff:true});
+      });
+    }
+  }
+  renderAutoFeedPanel();
+}
+
+function saveMapClickPoint(name,mode,x,y,yaw,done){
+  if(!S.conn){L('未连接，无法设点','w');return}
+  const q=quaternionFromYaw(yaw);
+  const args={
+    point_name:name,
+    point_mode:mode,
+    point:{
+      header:{frame_id:'map'},
+      pose:{
+        pose:{
+          position:{x:Number(x),y:Number(y),z:0},
+          orientation:q
+        },
+        covariance:new Array(36).fill(0).map((_,i)=>i===0?1:0)
+      }
+    }
+  };
+  rSrv('/pointmanu_set','map_msgs/PointManuSet',args,(resp)=>{
+    const res=Number(extractResult(resp));
+    if(Number.isFinite(res)&&res>=100){
+      if(done)done(true,res);
+      refreshPts();
+    }else if(done){
+      done(false,res);
+    }
+  });
+}
+
+function screenToWorld(clientX,clientY){
+  if(!S.mapInfo)return null;
+  const a=$('mapArea'),r=a.getBoundingClientRect();
+  const mx=clientX-r.left,my=clientY-r.top;
+  const px=(mx-S.ox)/S.sc,py=(my-S.oy)/S.sc;
+  const o=S.mapInfo.origin.position,res=S.mapInfo.resolution,h=S.mapInfo.height;
+  return {x:o.x+px*res,y:o.y+(h-py)*res};
+}
+
+function handleMapClick(clientX,clientY){
+  const w=screenToWorld(clientX,clientY);
+  if(!w)return;
+  const name=window.prompt('导航点名称：','');
+  if(name===null)return;
+  const nm=name.trim()||(`点${Math.round(w.x*100)/100},${Math.round(w.y*100)/100}`);
+  saveMapClickPoint(nm,0,w.x,w.y,0,(ok,res)=>{
+    if(ok)L(`✓ 已在地图点击位置添加导航点：${nm}`,'o');
+    else L(`添加失败: ${res}`,'e');
+  });
+}
+
+function quaternionFromYaw(yaw){
+  return {x:0,y:0,z:Math.sin(yaw/2),w:Math.cos(yaw/2)};
+}
+
+function saveCurrentPosePoint(name,mode,done){
+  if(!S.conn){L('未连接，无法设点','w');return}
+  if(!S.hasPose){L('无实时位姿，无法记录姿态点','e');return}
+  const q=quaternionFromYaw(currentPoseYawRad());
+  const args={
+    point_name:name,
+    point_mode:mode,
+    point:{
+      header:{frame_id:'map'},
+      pose:{
+        pose:{
+          position:{x:S.pX,y:S.pY,z:0},
+          orientation:q
+        },
+        covariance:new Array(36).fill(0).map((_,i)=>i===0?1:0)
+      }
+    }
+  };
+  rSrv('/pointmanu_set','map_msgs/PointManuSet',args,(resp)=>{
+    const res=Number(extractResult(resp));
+    if(Number.isFinite(res)&&res>=100){
+      if(done)done(true,res);
+      refreshPts();
+    }else if(done){
+      done(false,res);
+    }
+  });
+}
+
+function saveMapModePoint(name,mode,done){
+  if(!S.conn){L('未连接，无法设点','w');return}
+  rSrv('/point_set','map_msgs/PointSet',{point_name:name,point_mode:mode},(resp)=>{
+    const res=Number(extractResult(resp));
+    stageMappingPoint(name,mode);
+    if(done)done(true,Number.isFinite(res)?res:0);
+  });
+}
+
+function findPointByMode(mode,currentOnly=false){
+  const local=visiblePts().map(p=>normalizePoint(p)).filter(Boolean);
+  const hit=local.find(p=>p._m===mode);
+  if(hit)return hit;
+  if(currentOnly)return null;
+  if(!S.mapMeta||!Array.isArray(S.mapMeta.floors))return null;
+  for(const fl of S.mapMeta.floors){
+    for(const mp of (fl.maps||[])){
+      const pts=[...(mp.points||[]),...(mp.systemPoints||[])];
+      for(const raw of pts){
+        const pid=getPointId(raw);
+        const norm=normalizePoint(raw,pid===getChargeId(mp)?1:(pid===getInitialId(mp)?2:guessPointMode(raw)));
+        if(norm._m===mode)return norm;
+      }
+    }
+  }
+  return null;
+}
+
+function maybeAutoCreateDockPoints(){
+  if(!isMappingMode()||!S.hasPose)return;
+  if(S.autoPt.busy)return;
+  if(Date.now()-S.autoPt.lastTryAt<800)return;
+  S.autoPt.lastTryAt=Date.now();
+  const jobs=[];
+  if(!S.autoPt.initial&&!findPointByMode(2,true))jobs.push({mode:2,name:'init_auto',label:'初始点'});
+  if(!jobs.length)return;
+  S.autoPt.busy=true;
+
+  const runNext=()=>{
+    if(!jobs.length){S.autoPt.busy=false;return}
+    const job=jobs.shift();
+    saveMapModePoint(job.name,job.mode,(ok,res)=>{
+      if(ok){
+        if(job.mode===1)S.autoPt.charge=true;
+        if(job.mode===2)S.autoPt.initial=true;
+        L(`✓ 建图充电检测：已提交${job.label}创建请求`,'o');
+      }else{
+        L(`自动记录${job.label}失败: ${res}`,'e');
+      }
+      setTimeout(runNext,250);
+    });
+  };
+  runNext();
+}
+
+// ===== MAP MANAGEMENT =====
+function parseMapMetaResponse(resp){
+  let json=null;
+  try{
+    const v=resp.values||resp.result||resp;
+    if(typeof v==='object'&&v&&Object.prototype.hasOwnProperty.call(v,'message')){
+      if(v.message===''&&v.success===true)return {floors:[]};
+      json=v.message;
+    }
+    else if(typeof v==='string')json=v;
+    else if(typeof v==='object'&&v.floors)json=v;
+  }catch(e){}
+  if(!json)return null;
+  return typeof json==='string'?JSON.parse(json):json;
+}
+
+function mapCount(meta){
+  return ((meta&&meta.floors)||[]).reduce((sum,floor)=>sum+((floor.maps||[]).length),0);
+}
+
+function hasMapRecord(meta,spec){
+  if(!meta||!meta.floors||!spec)return false;
+  return meta.floors.some(floor=>{
+    const floorName=getFloorName(floor)||'';
+    if(spec.floor_name&&floorName&&floorName!==spec.floor_name)return false;
+    return (floor.maps||[]).some(map=>(getMapName(map)||'')===spec.map_name);
+  });
+}
+
+function requestMapMeta(done){
+  rSrv('/get_maps','std_srvs/Trigger',{},(resp)=>{
+    try{
+      const meta=parseMapMetaResponse(resp);
+      if(!meta){done(false,null,resp);return}
+      done(true,meta,resp);
+    }catch(e){
+      done(false,null,resp,e);
+    }
+  });
+}
+
+function loadMaps(done){
+  if(!S.conn){L('未连接','w');if(done)done(false,null);return}
+  L('请求地图列表...','i');
+  requestMapMeta((ok,meta,resp,err)=>{
+    if(!ok){
+      if(err)L('JSON解析失败: '+err.message,'e');
+      L('⚠ 响应格式未知: '+JSON.stringify(resp).substring(0,300),'w');
+      if(done)done(false,null,resp,err);
+      return;
+    }
+    S.mapMeta=meta;
+    popMaps();
+    L('✓ 地图列表OK ('+mapCount(S.mapMeta)+'张)','o');
+    if(done)done(true,meta,resp);
+  });
+}
+
+function waitForSavedMap(spec,beforeCount,tries,done){
+  requestMapMeta((ok,meta)=>{
+    if(ok){
+      S.mapMeta=meta;
+      popMaps();
+      const count=mapCount(meta);
+      L(`保存后轮询地图列表: ${count}张`,'i');
+      if(count>beforeCount||hasMapRecord(meta,spec)){done(true,meta);return}
+    }
+    if(tries<=0){done(false,null);return}
+    setTimeout(()=>waitForSavedMap(spec,beforeCount,tries-1,done),2000);
+  });
+}
+
+function popMaps(){
+  const s=$('mS'),d=$('dS');
+  s.innerHTML='<option value="">-- 选择地图 --</option>';
+  d.innerHTML='<option value="">-- 选择 --</option>';
+  if(!S.mapMeta||!S.mapMeta.floors){
+    S.curFl=null;S.curMp=null;S.curPts=[];renderPts();renderMap();
+    syncMobileMapChrome();
+    return;
+  }
+  S.mapMeta.floors.forEach(fl=>{
+    if(!fl.maps)return;
+    fl.maps.forEach(m=>{
+      const floorId=getFloorId(fl),mapId=getMapId(m);
+      const lb=`${getFloorName(fl)||'楼层'+floorId} / ${getMapName(m)||'地图'+mapId}`;
+      const vl=JSON.stringify({f:floorId,m:mapId});
+      // Merge normal points + systemPoints
+      const pts=[...(m.points||[])];
+      (m.systemPoints||[]).forEach(sp=>{sp._sys=true;pts.push(sp)});
+      const o1=new Option(lb,vl);
+      o1.dataset.pts=JSON.stringify(pts);
+      o1.dataset.cid=getChargeId(m)||0;
+      o1.dataset.iid=getInitialId(m)||0;
+      s.appendChild(o1);
+      d.appendChild(new Option(lb,vl));
+    });
+  });
+  if(s.options.length===1){
+    S.curFl=null;S.curMp=null;S.curPts=[];renderPts();renderMap();
+    syncMobileMapChrome();
+    return;
+  }
+  let picked=false;
+  if(S.curFl!=null&&S.curMp!=null){
+    for(let i=1;i<s.options.length;i++){
+      const v=JSON.parse(s.options[i].value);
+      if(v.f===S.curFl&&v.m===S.curMp){s.selectedIndex=i;picked=true;break}
+    }
+  }
+  if(!picked&&s.options.length>=2)s.selectedIndex=1;
+  if(s.selectedIndex>0)onMapSel();
+  else syncMobileMapChrome();
+}
+
+$('mS').addEventListener('change',onMapSel);
+function onMapSel(){
+  const o=$('mS').selectedOptions[0];
+  if(!o||!o.value){S.curFl=null;S.curMp=null;S.curPts=[];renderPts();renderMap();syncMobileMapChrome();return}
+  const inf=JSON.parse(o.value);
+  S.curFl=inf.f;S.curMp=inf.m;
+  const pts=JSON.parse(o.dataset.pts||'[]');
+  const cid=parseInt(o.dataset.cid)||0, iid=parseInt(o.dataset.iid)||0;
+  S.curPts=pts.map(p=>normalizePoint(p,getPointId(p)===cid?1:(getPointId(p)===iid?2:guessPointMode(p)))).filter(Boolean);
+  S.autoPt.charge=S.curPts.some(p=>p._m===1);
+  S.autoPt.initial=S.curPts.some(p=>p._m===2);
+  if(autoFeedEditable()){
+    const candidateKeys=new Set(getAutoFeedCandidates().map(p=>p.key));
+    S.autoFeedTask.queue=S.autoFeedTask.queue.filter(item=>candidateKeys.has(item.key));
+  }
+  renderPts();renderMap();
+  syncMobileMapChrome();
+  if(isMappingMode()&&isChargingState(S.chg))maybeAutoCreateDockPoints();
+  L(`地图 f=${inf.f} m=${inf.m} (${S.curPts.length}点)`,'i');
+}
+
+function switchMap(){
+  if(S.curFl==null){L('请先选择地图','w');return}
+  if(autoFeedWorking())stopAutoFeedMission('已切换地图',{stopRobot:true,forceFeedOff:true});
+  S.mapSwitch={inFlight:true,targetFloorId:S.curFl,targetMapId:S.curMp,startedAt:Date.now()};
+  finishAutoNav(false,'切换地图');
+  L(`切换地图 f=${S.curFl} m=${S.curMp}...`,'i');
+  rSrv('/publish_map','map_msgs/PublishMap',{type:0,floor_id:S.curFl,map_id:S.curMp},()=>{
+    L('✓ 切换指令已发','o');
+    setTimeout(refreshPts,1200);
+  });
+}
+
+function renderPts(){
+  const l=$('npL'),pts=visiblePts();
+  if(!pts.length){l.innerHTML='<div style="padding:8px;font-size:10px;color:var(--t3)">暂无点位</div>';renderAutoFeedPanel();return}
+  l.innerHTML='';
+  pts.forEach(pt=>{
+    const m=pt._m||0;
+    const ml=['导航点','充电桩','初始点'][m]||'?';
+    const mc=['n','c','i'][m];
+    const d=document.createElement('div');d.className='np-i';
+    const meta=pt._staged?`建图暂存 (${(pt.positionx||0).toFixed(1)},${(pt.positiony||0).toFixed(1)})`:`(${(pt.positionx||0).toFixed(1)},${(pt.positiony||0).toFixed(1)})`;
+    if(m===0&&!pt._staged){
+      d.style.cursor='pointer';
+      d.onclick=()=>navTo(pt.pointid);
+    }
+    d.innerHTML=`<span class="tag ${mc}">${ml}</span><span class="nm">${pt.pointName||'点'+pt.pointid}</span><span class="co">${meta}</span>${m===0&&!pt._staged?`<div class="acts"><button class="b sm p" onclick="event.stopPropagation();navTo(${pt.pointid})">导航</button></div>`:''}`;
+    l.appendChild(d);
+  });
+  renderAutoFeedPanel();
+}
+
+function currentFloorName(){
+  const opt=[...$('mS').options].find(o=>{
+    if(!o.value)return false;
+    try{const v=JSON.parse(o.value);return v.f===S.curFl&&v.m===S.curMp}catch(_){return false}
+  });
+  return opt?opt.text.split(' / ')[0]:'';
+}
+
+function currentMapName(){
+  const opt=[...$('mS').options].find(o=>{
+    if(!o.value)return false;
+    try{const v=JSON.parse(o.value);return v.f===S.curFl&&v.m===S.curMp}catch(_){return false}
+  });
+  return opt?opt.text.split(' / ')[1]:'';
+}
+
+function diagGetMaps(){
+  L('诊断：请求 get_maps','i');
+  requestMapMeta((ok,meta,resp,err)=>{
+    if(ok)L(`诊断：get_maps 成功（${mapCount(meta)}张）`,'o');
+    else if(err)L(`诊断：get_maps JSON解析失败 ${err.message}`,'e');
+    else L('诊断：get_maps 失败','e');
+  });
+}
+
+async function navTo(pid){
+  if(isMapSwitchBusy()){L('切图尚未完成，请等待新地图加载成功后再单点导航','w');return}
+  const pt=visiblePts().find(p=>Number(p.pointid)===Number(pid));
+  if(!pt){L('导航点不存在','w');return}
+  const yaw=Number(pt.positionyaw||0)*Math.PI/180;
+  L(`下发 ROS2 导航：${pt.pointName}`,'i');
+  try{
+    const resp=await fetch('http://127.0.0.1:8088/api/goal',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({x:Number(pt.positionx),y:Number(pt.positiony),yaw})
+    });
+    const r=await resp.json();
+    if(r&&r.error){L('导航失败：'+(r.error||'未知错误'),'e');}
+    else{L(`✓ ROS2 导航已下发：${pt.pointName}`,'o');}
+  }catch(e){
+    L('导航失败：'+e.message,'e');
+  }
+}
+
+function visiblePts(){
+  const out=[];
+  const seen=new Set();
+  [...(S.curPts||[]),...(S.stagedPts||[])].forEach(raw=>{
+    const pt=normalizePoint(raw,raw?._m);
+    if(!pt)return;
+    pt._staged=Boolean(raw&&raw._staged);
+    const key=`${pt._m}|${pt.pointName}|${pt.positionx.toFixed(2)}|${pt.positiony.toFixed(2)}`;
+    if(seen.has(key))return;
+    seen.add(key);
+    out.push(pt);
+  });
+  return out;
+}
+
+function stageMappingPoint(name,mode){
+  if(!isMappingMode()||!S.hasPose)return;
+  const staged={
+    pointid:S.tmpPid--,
+    pointName:name,
+    positionx:S.pX,
+    positiony:S.pY,
+    positionyaw:currentPoseYawRad(),
+    floorId:S.curFl||0,
+    mapId:S.curMp||0,
+    _m:mode,
+    _staged:true
+  };
+  if(mode===1||mode===2){
+    S.stagedPts=S.stagedPts.filter(p=>p._m!==mode);
+    S.stagedPts.push(staged);
+  }else{
+    const idx=S.stagedPts.findIndex(p=>p._m===0&&p.pointName===name);
+    if(idx>=0)S.stagedPts[idx]=staged;
+    else S.stagedPts.push(staged);
+  }
+  renderPts();
+  renderMap();
+}
+
+function normalizePoint(pt,modeOverride){
+  if(!pt)return null;
+  const mode=modeOverride!==undefined?modeOverride:(pt._m!==undefined?pt._m:guessPointMode(pt));
+  return {
+    pointid:getPointId(pt),
+    pointName:pt.pointName||pt.point_name||pt.name||`点${pt.pointid||pt.point_id||''}`,
+    positionx:Number(pt.positionx??pt.positionX??pt.position_x??pt.x??0),
+    positiony:Number(pt.positiony??pt.positionY??pt.position_y??pt.y??0),
+    positionyaw:Number(pt.positionyaw??pt.positionYaw??pt.position_yaw??pt.theta??pt.yaw??0),
+    floorId:Number(pt.floorId??pt.floor_id??pt.bindFloorId??pt.bind_floor_id??S.curFl??0),
+    mapId:Number(pt.mapId??pt.map_id??pt.bindMapId??pt.bind_map_id??S.curMp??0),
+    _m:Number(mode||0)
+  };
+}
+
+function getFloorId(fl){return Number(fl?.floorId??fl?.floorid??0)}
+function getFloorName(fl){return fl?.floorName??fl?.floorname??''}
+function getMapId(mp){return Number(mp?.mapId??mp?.mapid??0)}
+function getMapName(mp){return mp?.mapName??mp?.mapname??''}
+function getChargeId(mp){return Number(mp?.chargeId??mp?.chargeid??0)}
+function getInitialId(mp){return Number(mp?.initialId??mp?.initialid??0)}
+function getPointId(pt){return Number(pt?.pointId??pt?.pointid??pt?.point_id??0)}
+function findFloorMeta(floorId){return (S.mapMeta?.floors||[]).find(fl=>getFloorId(fl)===Number(floorId))||null}
+function timeStampName(){
+  const d=new Date();
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+function makeDefaultSaveSpec(){
+  const floors=S.mapMeta?.floors||[];
+  const mapName=`map_${timeStampName()}`;
+  const activeFloor=S.curFl!=null?findFloorMeta(S.curFl):null;
+  if(activeFloor){
+    const floor=findFloorMeta(S.curFl);
+    return {type:0,floor_id:Number(S.curFl),floor_name:getFloorName(floor)||`F${S.curFl}`,map_name:mapName};
+  }
+  if(floors.length){
+    const floor=floors[0];
+    return {type:1,floor_id:getFloorId(floor),floor_name:getFloorName(floor)||`F${getFloorId(floor)}`,map_name:mapName};
+  }
+  return {type:2,floor_id:0,floor_name:'F1',map_name:mapName};
+}
+
+function askSaveSpec(){
+  const floors=S.mapMeta?.floors||[];
+  const defaultMap=`map_${timeStampName()}`;
+  const activeFloor=S.curFl!=null?findFloorMeta(S.curFl):null;
+  if(activeFloor){
+    const floor=activeFloor;
+    const floorName=getFloorName(floor)||`F${S.curFl}`;
+    const mapName=window.prompt(`保存到当前楼层：${floorName}\n请输入地图名称：`,defaultMap);
+    if(!mapName||!mapName.trim())return null;
+    return {type:0,floor_id:Number(S.curFl),floor_name:floorName,map_name:mapName.trim()};
+  }
+  if(floors.length){
+    const floor=floors[0];
+    const floorName=getFloorName(floor)||`F${getFloorId(floor)}`;
+    const mapName=window.prompt(`保存到已有楼层：${floorName}\n请输入地图名称：`,defaultMap);
+    if(!mapName||!mapName.trim())return null;
+    return {type:1,floor_id:getFloorId(floor),floor_name:floorName,map_name:mapName.trim()};
+  }
+  const floorName=window.prompt('当前没有楼层，请输入新楼层名称：','F1');
+  if(!floorName||!floorName.trim())return null;
+  const mapName=window.prompt(`新楼层：${floorName.trim()}\n请输入地图名称：`,defaultMap);
+  if(!mapName||!mapName.trim())return null;
+  return {type:2,floor_id:0,floor_name:floorName.trim(),map_name:mapName.trim()};
+}
+
+function guessPointMode(pt){
+  const name=(pt.pointName||pt.point_name||pt.name||'').toLowerCase();
+  if(name.includes('charge')||name.includes('充电'))return 1;
+  if(name.includes('init')||name.includes('initial')||name.includes('初始'))return 2;
+  return 0;
+}
+
+function currentPoseYawRad(){return Number(S.pYaw||0)*Math.PI/180}
+function normalizeRad(a){while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a}
+function makeDockApproachPose(target,distance=0.30){
+  const yaw=Number(target?.positionyaw||0);
+  const dx=Math.cos(yaw)*distance;
+  const dy=Math.sin(yaw)*distance;
+  return {...target,positionx:Number(target.positionx||0)-dx,positiony:Number(target.positiony||0)-dy,positionyaw:yaw};
+}
+function worldErrorInRobotFrame(robotX,robotY,robotYaw,targetX,targetY){
+  const dx=Number(targetX||0)-Number(robotX||0);
+  const dy=Number(targetY||0)-Number(robotY||0);
+  const c=Math.cos(robotYaw),s=Math.sin(robotYaw);
+  return {x:c*dx+s*dy,y:-s*dx+c*dy};
+}
+
+function worldToGrid(x,y){
+  if(!S.mapInfo)return null;
+  const o=S.mapInfo.origin.position,res=S.mapInfo.resolution;
+  const gx=Math.round((x-o.x)/res);
+  const gy=Math.round((y-o.y)/res);
+  if(gx<0||gy<0||gx>=S.mapInfo.width||gy>=S.mapInfo.height)return null;
+  return {x:gx,y:gy};
+}
+
+function gridToWorld(gx,gy){
+  const o=S.mapInfo.origin.position,res=S.mapInfo.resolution;
+  return {x:o.x+(gx+0.5)*res,y:o.y+(gy+0.5)*res};
+}
+
+function buildObstacleGrid(){
+  if(!S.mapData||!S.mapInfo||!Array.isArray(S.mapData.data))return null;
+  const w=S.mapInfo.width,h=S.mapInfo.height,res=S.mapInfo.resolution;
+  const src=S.mapData.data;
+  const occ=new Uint8Array(w*h);
+  const inflate=Math.max(1,Math.round(0.18/res));
+  for(let i=0;i<src.length;i++){
+    const v=src[i];
+    if(v<0||v>=65)occ[i]=1;
+  }
+  const inf=occ.slice();
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    if(!occ[y*w+x])continue;
+    for(let dy=-inflate;dy<=inflate;dy++)for(let dx=-inflate;dx<=inflate;dx++){
+      if(dx*dx+dy*dy>inflate*inflate)continue;
+      const nx=x+dx,ny=y+dy;
+      if(nx<0||ny<0||nx>=w||ny>=h)continue;
+      inf[ny*w+nx]=1;
+    }
+  }
+  return {w,h,res,data:inf};
+}
+
+function planAStar(startWorld,targetWorld){
+  const grid=buildObstacleGrid();
+  if(!grid)return null;
+  const s=worldToGrid(startWorld.x,startWorld.y);
+  const g=worldToGrid(targetWorld.x,targetWorld.y);
+  if(!s||!g)return null;
+
+  const idx=(x,y)=>y*grid.w+x;
+  const free=(x,y)=>x>=0&&y>=0&&x<grid.w&&y<grid.h&&!grid.data[idx(x,y)];
+  const nearestFree=(cell)=>{
+    if(free(cell.x,cell.y))return cell;
+    for(let r=1;r<12;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+      const nx=cell.x+dx,ny=cell.y+dy;
+      if(free(nx,ny))return {x:nx,y:ny};
+    }
+    return null;
+  };
+  const ss=nearestFree(s), gg=nearestFree(g);
+  if(!ss||!gg)return null;
+
+  const open=[{x:ss.x,y:ss.y,f:0,g:0}];
+  const gScore=new Float64Array(grid.w*grid.h);gScore.fill(Infinity);
+  const parent=new Int32Array(grid.w*grid.h);parent.fill(-1);
+  const closed=new Uint8Array(grid.w*grid.h);
+  const hcost=(x,y)=>Math.hypot(gg.x-x,gg.y-y);
+  gScore[idx(ss.x,ss.y)]=0;
+  open[0].f=hcost(ss.x,ss.y);
+  const dirs=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,Math.SQRT2],[1,-1,Math.SQRT2],[-1,1,Math.SQRT2],[-1,-1,Math.SQRT2]];
+
+  while(open.length){
+    let bi=0;
+    for(let i=1;i<open.length;i++)if(open[i].f<open[bi].f)bi=i;
+    const cur=open.splice(bi,1)[0];
+    const ci=idx(cur.x,cur.y);
+    if(closed[ci])continue;
+    closed[ci]=1;
+    if(cur.x===gg.x&&cur.y===gg.y){
+      const cells=[];
+      let at=ci;
+      while(at!==-1){
+        const x=at%grid.w,y=(at/grid.w)|0;
+        cells.push({x,y});
+        at=parent[at];
+      }
+      cells.reverse();
+      return smoothWorldPath(cells.map(c=>gridToWorld(c.x,c.y)));
+    }
+    for(const [dx,dy,c] of dirs){
+      const nx=cur.x+dx,ny=cur.y+dy;
+      if(!free(nx,ny))continue;
+      if(dx!==0&&dy!==0&&(!free(cur.x+dx,cur.y)||!free(cur.x,cur.y+dy)))continue;
+      const ni=idx(nx,ny);
+      if(closed[ni])continue;
+      const ng=gScore[ci]+c;
+      if(ng>=gScore[ni])continue;
+      gScore[ni]=ng;
+      parent[ni]=ci;
+      open.push({x:nx,y:ny,g:ng,f:ng+hcost(nx,ny)});
+    }
+  }
+  return null;
+}
+
+function smoothWorldPath(path){
+  if(!path||path.length<3)return path||[];
+  const out=[path[0]];
+  for(let i=1;i<path.length-1;i++){
+    const a=out[out.length-1],b=path[i],c=path[i+1];
+    const ab=Math.atan2(b.y-a.y,b.x-a.x),bc=Math.atan2(c.y-b.y,c.x-b.x);
+    if(Math.abs(normalizeRad(bc-ab))<0.18)continue;
+    out.push(b);
+  }
+  out.push(path[path.length-1]);
+  return out;
+}
+
+function stopAutoNavTimer(){
+  if(S.navRun.timer){clearInterval(S.navRun.timer);S.navRun.timer=null}
+}
+
+function finishAutoNav(ok,msg){
+  const wasActive=S.navRun.active;
+  stopAutoNavTimer();
+  sBurst();
+  S.navRun={active:false,target:null,goalTarget:null,path:[],rawPath:[],index:0,timer:null,paused:false,pauseReason:'',lastPlanAt:0,lastProgressAt:0,lastDistance:Infinity,isChargeTask:false,phase:'idle',dockStartedAt:0};
+  renderMap();
+  if(msg&&wasActive)L((ok?'✓ ':'✗ ')+msg,ok?'o':'e');
+}
+
+function startAutoNav(targetPoint,isChargeTask,opts={}){
+  if(!S.conn){L('未连接','w');return}
+  if(!S.mapInfo||!S.mapData){L('地图未加载，无法规划','e');return}
+  if(!S.hasPose){L('无实时位姿，无法规划','e');return}
+  const target=normalizePoint(targetPoint);
+  if(!target){L('目标点无效','e');return}
+  if(target.mapId&&S.curMp&&target.mapId!==S.curMp){
+    L(`目标点属于地图 ${target.mapId}，当前地图是 ${S.curMp}，请先切换地图`,'e');
+    return;
+  }
+  if(!isChargeTask&&isChargingState(S.chg)&&!opts.skipChargeCheck){
+    queueNavAfterUndock(target,'self',{isChargeTask:Boolean(isChargeTask)});
+    return;
+  }
+  const planTarget=isChargeTask?makeDockApproachPose(target,0.30):target;
+  const path=planAStar({x:S.pX,y:S.pY},{x:planTarget.positionx,y:planTarget.positiony});
+  if(!path||path.length===0){L(`A* 规划失败：${target.pointName}`,'e');return}
+  stopAutoNavTimer();
+  S.navRun={active:true,target:planTarget,goalTarget:target,path,rawPath:path.slice(),index:0,timer:null,paused:false,pauseReason:'',lastPlanAt:Date.now(),lastProgressAt:Date.now(),lastDistance:Infinity,isChargeTask:Boolean(isChargeTask),phase:isChargeTask?'approach':'path',dockStartedAt:0};
+  renderMap();
+  L(`A* 路径已生成：${target.pointName}，${path.length} 个航点`,'o');
+  S.navRun.timer=setInterval(navStep,100);
+}
+
+function navStep(){
+  const run=S.navRun;
+  if(!run.active||!run.target){stopAutoNavTimer();return}
+  if(!S.hasPose||!S.mapInfo){finishAutoNav(false,'导航中丢失位姿/地图');return}
+  const target=(run.phase==='align'||run.phase==='dock')?(run.goalTarget||run.target):run.target;
+  const distToGoal=Math.hypot(target.positionx-S.pX,target.positiony-S.pY);
+  const closeForDock=run.isChargeTask&&(run.phase==='align'||run.phase==='dock'||distToGoal<0.30);
+
+  if(S.frontObs&&!closeForDock){
+    if(!run.paused){
+      run.paused=true;run.pauseReason='前方障碍物';sBurst();L('前方扫描到障碍物，暂停导航','w');
+    }
+    return;
+  }
+  if(run.paused){
+    run.paused=false;run.pauseReason='';L('障碍物消失，继续导航','o');
+  }
+
+  while(run.index<run.path.length-1){
+    const wp=run.path[run.index];
+    if(Math.hypot(wp.x-S.pX,wp.y-S.pY)>0.18)break;
+    run.index++;
+  }
+
+  if(run.isChargeTask&&run.phase==='approach'&&distToGoal<0.10){
+    run.phase='align';
+    L('已到达预对接点，开始转正','i');
+  }
+
+  if(run.phase==='align'){
+    const dockTarget=run.goalTarget||run.target;
+    const yawErrAlign=normalizeRad(dockTarget.positionyaw-currentPoseYawRad());
+    if(Math.abs(yawErrAlign)<=0.10){
+      run.phase='dock';
+      run.dockStartedAt=Date.now();
+      L('进入回充对接阶段','i');
+      return;
+    }
+    const az=Math.max(-0.5,Math.min(0.5,yawErrAlign*1.6));
+    pV(0,az);
+    return;
+  }
+
+  if(run.phase==='dock'){
+    if(isChargingState(S.chg)){
+      finishAutoNav(true,'已检测到充电，回充完成');
+      return;
+    }
+    const poseErr=worldErrorInRobotFrame(S.pX,S.pY,currentPoseYawRad(),target.positionx,target.positiony);
+    const yawErrDock=normalizeRad(target.positionyaw-currentPoseYawRad());
+    const angDock=Math.max(-0.45,Math.min(0.45,poseErr.y*3.4+yawErrDock*1.2));
+    let linDock=Math.max(0.02,Math.min(0.07,poseErr.x*0.55));
+    if(Math.abs(poseErr.y)>0.05||Math.abs(yawErrDock)>0.22)linDock=Math.min(linDock,0.035);
+    if(poseErr.x<0.01)linDock=0.02;
+    pV(linDock,angDock);
+    if(Date.now()-run.dockStartedAt>12000){
+      finishAutoNav(false,'对接超时，仍未检测到充电');
+    }
+    return;
+  }
+
+  if(distToGoal<run.lastDistance-0.03){
+    run.lastDistance=distToGoal;
+    run.lastProgressAt=Date.now();
+  }else if((run.phase==='path'||run.phase==='approach')&&Date.now()-run.lastProgressAt>2500){
+    const replanned=planAStar({x:S.pX,y:S.pY},{x:target.positionx,y:target.positiony});
+    if(replanned&&replanned.length){
+      run.path=replanned;run.index=0;run.lastProgressAt=Date.now();run.lastDistance=distToGoal;renderMap();L('检测到停滞，已重新规划 A* 路径','w');
+    }else{
+      finishAutoNav(false,'重规划失败，导航终止');
+      return;
+    }
+  }
+
+  if(distToGoal<0.08){
+    const yawErr=normalizeRad(target.positionyaw-currentPoseYawRad());
+    if(Math.abs(yawErr)>0.12){
+      const az=Math.max(-0.6,Math.min(0.6,yawErr*1.8));
+      pV(0,az);
+      return;
+    }
+    finishAutoNav(true,run.isChargeTask?`已到达充电点 ${target.pointName}`:`已到达导航点 ${target.pointName}`);
+    return;
+  }
+
+  const wp=run.path[Math.min(run.index,run.path.length-1)];
+  const heading=Math.atan2(wp.y-S.pY,wp.x-S.pX);
+  const angErr=normalizeRad(heading-currentPoseYawRad());
+  const lin=Math.abs(angErr)>0.7?0:Math.min(0.22,Math.max(0.06,distToGoal*0.45));
+  const ang=Math.max(-0.9,Math.min(0.9,angErr*1.8));
+  pV(lin,ang);
+}
+
+// ===== MAPPING =====
+function newMap(){
+  modal('新建地图','确定新建地图？将清除当前数据进入建图模式。\n\n建图中定位状态会暂时显示"丢失"，这是正常的。\n用摇杆推动机器人扫描环境即可。',false,()=>{
+    if(autoFeedWorking())stopAutoFeedMission('切换到建图模式',{stopRobot:true,forceFeedOff:true});
+    finishAutoNav(false,'切换到建图模式');
+    S.stagedPts=[];S.curPts=[];renderPts();renderMap();
+    resetSaveFlow();
+    rSrv('/clear_map','map_msgs/ClearMap',{},(r)=>{
+      L('✓ 新建地图，已进入建图模式','o');
+      L('⚠ 定位会暂时丢失，这是正常的，开始推动小车扫描','w');
+      // Force mapping mode UI
+      hMode(1);
+    });
+    cModal();
+  });
+}
+
+function extendMap(){
+  if(autoFeedWorking())stopAutoFeedMission('切换到扩展建图模式',{stopRobot:true,forceFeedOff:true});
+  finishAutoNav(false,'切换到扩展建图模式');
+  S.stagedPts=[];renderPts();renderMap();
+  resetSaveFlow();
+  L('扩展地图模式...','i');
+  rSrv('/set_mode','map_msgs/SetMode',{mode:2},()=>L('✓ 扩展地图模式','o'));
+  hMode(2);
+}
+
+function isFrozenSaveMessage(message){
+  return String(message||'').toUpperCase().includes('FROZEN');
+}
+
+function classifySaveResult(status,message){
+  if(Number(status)===0)return 'saved';
+  if(Number(status)===3&&isFrozenSaveMessage(message))return 'frozen';
+  return 'error';
+}
+
+function getSaveBlockReason(state){
+  if(state.mapMode!==1&&state.mapMode!==2)return '当前未处于建图/扩展地图模式';
+  if(state.saveFlow&&state.saveFlow.inFlight)return '当前正在保存地图，请等待结果';
+  if(state.saveFlow&&state.saveFlow.completed)return '本轮建图已结束，如需再次保存请重新开始建图';
+  return '';
+}
+
+function syncSaveButtons(){
+  const reason=getSaveBlockReason(S);
+  ['saveMapBarBtn','saveMapPanelBtn'].forEach(id=>{
+    const btn=$(id);
+    if(!btn)return;
+    btn.disabled=!!reason;
+    btn.title=reason||'保存当前地图并结束本轮建图';
+  });
+}
+
+function resetSaveFlow(){
+  S.saveFlow={inFlight:false,completed:false,lastStatus:NaN,lastMessage:'',lastSpec:null};
+  syncSaveButtons();
+}
+
+function finalizeSavedMapSession(spec,status,message){
+  S.saveFlow.inFlight=false;
+  S.saveFlow.completed=true;
+  S.saveFlow.lastStatus=Number(status);
+  S.saveFlow.lastMessage=String(message||'');
+  S.saveFlow.lastSpec=spec||null;
+  S.stagedPts=[];
+  renderPts();
+  renderMap();
+  hMode(0);
+  syncSaveButtons();
+}
+
+function saveAndExit(){
+  modal('保存地图','保存当前地图并退出建图模式。\n\n将先按 APP 流程输入楼层/地图名称，再调用 `save_map`。',false,()=>{
+    finishAutoNav(false,'保存地图并退出建图');
+    const blockReason=getSaveBlockReason(S);
+    if(blockReason){L(blockReason,'w');cModal();return}
+    const spec=askSaveSpec();
+    if(!spec){L('已取消保存地图','w');cModal();return}
+    const beforeCount=mapCount(S.mapMeta);
+    const startedAt=Date.now();
+    S.saveFlow.inFlight=true;
+    S.saveFlow.lastSpec=spec;
+    S.saveFlow.lastStatus=NaN;
+    S.saveFlow.lastMessage='';
+    syncSaveButtons();
+    let finished=false;
+    const sendSave=()=>{
+      L(`保存地图: save_map type=${spec.type} floor=${spec.floor_name} map=${spec.map_name}`,'i');
+      const timeout=setTimeout(()=>{
+        if(finished)return;
+        L('save_map 超时：服务未返回，开始轮询地图列表确认是否已落盘','w');
+        waitForSavedMap(spec,beforeCount,12,(ok)=>{
+          finished=true;
+          if(ok){
+            L(`✓ save_map 虽未回包，但地图已保存: ${spec.floor_name} / ${spec.map_name}`,'o');
+            finalizeSavedMapSession(spec,0,'save_map timeout but map persisted');
+          }else{
+            S.saveFlow.inFlight=false;
+            syncSaveButtons();
+            L('✗ save_map 未回包，且轮询后仍未发现新地图；问题在机器人端 save_map 服务链路','e');
+          }
+        });
+      },15000);
+      rSrv('/save_map','map_msgs/SaveMap',spec,(resp)=>{
+        if(finished)return;
+        finished=true;
+        clearTimeout(timeout);
+        L(`save_map 原始响应: ${JSON.stringify(resp).slice(0,280)}`,'i');
+        const status=extractStatus(resp);
+        const message=extractMessage(resp);
+        const resultKind=classifySaveResult(status,message);
+        if(resultKind==='saved'){
+          L(`✓ save_map 成功: ${spec.floor_name} / ${spec.map_name}`,'o');
+          finalizeSavedMapSession(spec,status,message);
+          setTimeout(()=>{
+            L('重新加载地图列表...','i');
+            loadMaps();
+          },2500);
+        }else if(resultKind==='frozen'){
+          S.saveFlow.inFlight=false;
+          S.saveFlow.completed=true;
+          S.saveFlow.lastStatus=status;
+          S.saveFlow.lastMessage=message;
+          syncSaveButtons();
+          hMode(0);
+          L('当前轨迹已冻结，不能重复保存；如需新地图，请重新开始建图','w');
+          setTimeout(()=>{
+            L('重新加载地图列表...','i');
+            loadMaps();
+          },1200);
+        }else{
+          S.saveFlow.inFlight=false;
+          S.saveFlow.lastStatus=status;
+          S.saveFlow.lastMessage=message;
+          syncSaveButtons();
+          L(`save_map失败: ${message||status||'unknown'} | ${Date.now()-startedAt}ms`,'e');
+        }
+      });
+    };
+    L('保存前先退出建图 set_mode(0)...','i');
+    rSrv('/set_mode','map_msgs/SetMode',{mode:0},()=>{
+      L('✓ 已退出建图模式，准备保存地图','o');
+      hMode(0);
+      setTimeout(sendSave,1200);
+    });
+    cModal();
+  });
+}
+
+function exitMapping(){
+  modal('退出建图','退出建图模式（不保存新扫描的内容）。',false,()=>{
+    if(autoFeedWorking())stopAutoFeedMission('退出建图',{stopRobot:true,forceFeedOff:true});
+    finishAutoNav(false,'退出建图');
+    S.stagedPts=[];renderPts();renderMap();
+    resetSaveFlow();
+    L('退出建图 set_mode(0)...','i');
+    rSrv('/set_mode','map_msgs/SetMode',{mode:0},(r)=>{
+      L('✓ 已退出建图模式','o');
+      hMode(0);
+      setTimeout(loadMaps,2000);
+    });
+    cModal();
+  });
+}
+
+function delMap(){
+  const s=$('dS');if(!s.value){L('请选择','w');return}
+  const inf=JSON.parse(s.value);
+  modal('删除地图',`确定删除地图 f=${inf.f} m=${inf.m}？不可恢复。`,false,()=>{
+    rSrv('/delete_map','map_msgs/DeleteMap',{floor_id:inf.f,map_id:inf.m},()=>{L('✓ 已删除','o');setTimeout(loadMaps,1000)});cModal()});
+}
+function delAll(){
+  modal('删除所有地图','⚠️ 确定删除所有地图？不可恢复！',false,()=>{
+    rSrv('/delete_allmap','map_msgs/DeleteMap',{floor_id:0,map_id:0},()=>{L('✓ 全部删除','o');S.curPts=[];renderPts();setTimeout(loadMaps,1000)});cModal()});
+}
+
+// Add points
+function addPt(){
+  const nm=$('ptN').value.trim(),m=parseInt($('ptM').value);
+  if(!nm&&m===0){L('名称不能为空','w');return}
+  const ml=['导航点','充电桩','初始点'][m];
+  L(`添加${ml} "${nm}"...`,'i');
+  const saver=isMappingMode()?saveMapModePoint:saveCurrentPosePoint;
+  saver(nm||(m===1?'charge':'init'),m,(ok,res)=>{
+    if(ok){L(`✓ ${ml} "${nm||''}" 添加成功（含姿态）`,'o');$('ptN').value=''}
+    else L(`添加失败: ${res}`,'e');
+  });
+}
+
+function addPtQuick(m){
+  const ml=['导航点','充电桩','初始点'][m];
+  if(m===1){
+    modal('添加充电桩','请确认机器人面向充电桩，距离约0.5米。\n添加后充电桩位置不可移动。',false,()=>{
+      const saver=isMappingMode()?saveMapModePoint:saveCurrentPosePoint;
+      saver('charge',1,(ok,res)=>{
+        if(ok){S.autoPt.charge=true;L('✓ 充电桩添加成功（含姿态）','o')}else L('充电桩添加失败: '+res,'e')
+      });cModal()});
+  }else if(m===2){
+    modal('添加初始点','在机器人位于充电桩上且位置正确时添加。',false,()=>{
+      const saver=isMappingMode()?saveMapModePoint:saveCurrentPosePoint;
+      saver('init',2,(ok,res)=>{
+        if(ok){S.autoPt.initial=true;L('✓ 初始点添加成功（含姿态）','o')}else L('初始点添加失败: '+res,'e')
+      });cModal()});
+  }else{
+    modal('添加导航点','请输入导航点名称:',true,()=>{
+      const nm=$('mIv').value.trim();if(!nm){L('名称不能为空','w');return}
+      const saver=isMappingMode()?saveMapModePoint:saveCurrentPosePoint;
+      saver(nm,0,(ok,res)=>{
+        if(ok){L(`✓ 导航点 "${nm}" 添加成功（含姿态）`,'o')}else L('添加失败: '+res,'e')
+      });cModal()});
+  }
+}
+
+function extractResult(r){
+  if(r.values&&r.values.result!==undefined)return r.values.result;
+  if(r.result&&typeof r.result==='object'&&r.result.result!==undefined)return r.result.result;
+  return 0; // assume ok if no result field
+}
+
+function extractStatus(r){
+  if(r.values&&r.values.status!==undefined)return Number(r.values.status);
+  if(r.result&&typeof r.result==='object'&&r.result.status!==undefined)return Number(r.result.status);
+  if(r.status!==undefined)return Number(r.status);
+  return NaN;
+}
+
+function extractMessage(r){
+  if(r.values&&r.values.message!==undefined)return String(r.values.message||'');
+  if(r.result&&typeof r.result==='object'&&r.result.message!==undefined)return String(r.result.message||'');
+  if(r.message!==undefined)return String(r.message||'');
+  return '';
+}
+
+// After adding a point, refresh the map list to get updated coordinates
+function refreshPts(){
+  if(isMappingMode()){renderPts();renderMap();return}
+  setTimeout(()=>{
+    requestMapMeta((ok,meta)=>{
+      if(!ok)return;
+      S.mapMeta=meta;
+      popMaps();
+      if(S.curFl!=null&&S.curMp!=null){
+        const sel=$('mS');
+        for(let i=0;i<sel.options.length;i++){
+          if(sel.options[i].value){
+            const v=JSON.parse(sel.options[i].value);
+            if(v.f===S.curFl&&v.m===S.curMp){sel.selectedIndex=i;onMapSel();break}
+          }
+        }
+      }
+      L('✓ 点位列表已刷新','o');
+    });
+  },1000); // wait 1s for firmware to update
+}
+
+// Modal
+function modal(t,b,hasIn,cb){$('mT').textContent=t;$('mB').textContent=b;$('mIn').style.display=hasIn?'block':'none';if(hasIn)$('mIv').value='';$('mOk').onclick=cb;$('mBg').classList.add('show')}
+function cModal(){$('mBg').classList.remove('show')}
+
+window.addEventListener('resize',()=>{if(S.mapData)resetView();syncMobileMapChrome()});
+window.addEventListener('load',()=>{
+  setTimeout(conn,300);
+  startRos2Stream();
+  syncFeedSettingsUi();
+  syncFeedStatusUi();
+  startFeedStatePolling();
+  $('feedApiUrl')?.addEventListener('keydown',e=>{if(e.key==='Enter')saveFeedSettings()});
+  renderAutoFeedPanel();
+});
+
+L('渔场自动导航投喂系统 v3','i');
+L('连接后自动加载地图 | 默认 ws://10.7.5.88:9090','i');
+L(`多点队列联动已启用 | RK3588 ${S.feedCtl.apiBaseUrl}`,'i');
+syncMobileMapChrome();
+</script>
+</body>
+</html>

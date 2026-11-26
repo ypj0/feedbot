@@ -1,0 +1,11 @@
+[Unit]
+Description=Feedbot manual chassis web test (no automatic motion)
+Requires=feedbot-nav2-engine.service
+After=feedbot-nav2-engine.service
+
+[Service]
+Type=simple
+ExecStart=/opt/feedbot-nav2/docker/docker -H unix:///run/feedbot-nav2-docker.sock run --rm --name feedbot-chassis-web --network host --pid host --cap-add SYS_PTRACE --security-opt apparmor=unconfined --device /dev/rikibase:/dev/rikibase -e ROS_DOMAIN_ID=89 -e ROS_LOCALHOST_ONLY=1 -e RMW_IMPLEMENTATION=rmw_fastrtps_cpp -e FEEDBOT_TEST_TOKEN_FILE=/key/token -e FEEDBOT_TEST_LOG=/results/trace.jsonl -v /run/feedbot-chassis-web:/key:ro -v /opt/feedbot-chassis/releases/20261122-ros2-v1:/work:ro -v /opt/feedbot-chassis-web/releases/20261122-v2/chassis:/web:ro -v /var/tmp/feedbot-chassis-calibration-web-20261122-01:/results --entrypoint /bin/bash feedbot-navigation:jazzy-20261122 /web/run_car.sh
+ExecStop=/opt/feedbot-nav2/docker/docker -H unix:///run/feedbot-nav2-docker.sock stop -t 10 feedbot-chassis-web
+TimeoutStopSec=20
+Restart=no

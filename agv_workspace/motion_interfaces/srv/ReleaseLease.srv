@@ -1,0 +1,5 @@
+# 所有者显式释放租约。释放后输出零速度，不会自动交给其他来源。
+uint64 lease_id
+---
+bool released
+uint8 reason

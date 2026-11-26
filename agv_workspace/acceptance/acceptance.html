@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phase 1A 实车验证</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .header {
+            grid-column: 1 / -1;
+            text-align: center;
+            color: white;
+            padding: 20px;
+        }
+        .header h1 { font-size: 32px; margin-bottom: 10px; }
+        .header p { font-size: 14px; opacity: 0.9; }
+
+        /* 传感器信息 */
+        .sensor-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .sensor {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        .sensor-label { color: #666; font-weight: 600; }
+        .sensor-value {
+            color: #333;
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        .sensor-unit { color: #999; font-size: 11px; }
+
+        /* 控制盘 */
+        .control-pad {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .arrow-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 5px;
+            margin-bottom: 20px;
+        }
+        .arrow-btn {
+            aspect-ratio: 1;
+            border: none;
+            border-radius: 8px;
+            font-size: 24px;
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            transition: all 0.1s;
+            font-weight: bold;
+        }
+        .arrow-btn:hover { background: #5568d3; }
+        .arrow-btn:active { transform: scale(0.95); background: #4557c2; }
+        .arrow-btn:disabled { background: #ccc; cursor: not-allowed; }
+
+        /* 摇杆 */
+        .joystick-container {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto 20px;
+            background: #f5f5f5;
+            border-radius: 50%;
+            position: relative;
+            border: 2px solid #ddd;
+            touch-action: none;
+        }
+        .joystick-bg {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .joystick-stick {
+            width: 60px;
+            height: 60px;
+            background: #667eea;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        .joystick-stick:active { cursor: grabbing; }
+
+        /* 诊断信息 */
+        .diagnostics {
+            margin-top: 20px;
+        }
+        .diag-item {
+            padding: 8px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            border-left: 4px solid;
+        }
+        .diag-ok { background: #e8f5e9; border-color: #4caf50; }
+        .diag-warn { background: #fff3e0; border-color: #ff9800; }
+        .diag-error { background: #ffebee; border-color: #f44336; }
+
+        /* 底部状态 */
+        .footer {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 20px;
+            justify-content: space-around;
+            padding: 20px;
+            background: white;
+            border-radius: 12px;
+        }
+        .status-box {
+            text-align: center;
+        }
+        .status-label { color: #999; font-size: 12px; }
+        .status-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+            margin-top: 5px;
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .container { grid-template-columns: 1fr; }
+            .sensor-grid { grid-template-columns: 1fr; }
+            .arrow-buttons { gap: 3px; }
+        }
+
+        .stop-btn {
+            width: 100%;
+            padding: 15px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .stop-btn:hover { background: #d32f2f; }
+        .stop-btn:active { transform: scale(0.98); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Phase 1A 实车验证</h1>
+            <p>实时监测 + 遥控运动</p>
+        </div>
+
+        <!-- 左侧：传感器信息 + 诊断 -->
+        <div class="card">
+            <h2>📊 实时传感器</h2>
+            <div class="sensor-grid">
+                <div class="sensor">
+                    <div class="sensor-label">扫描频率</div>
+                    <div class="sensor-value" id="scan-rate">0</div>
+                    <div class="sensor-unit">Hz</div>
+                </div>
+                <div class="sensor">
+                    <div class="sensor-label">IMU 频率</div>
+                    <div class="sensor-value" id="imu-rate">0</div>
+                    <div class="sensor-unit">Hz</div>
+                </div>
+                <div class="sensor">
+                    <div class="sensor-label">里程计频率</div>
+                    <div class="sensor-value" id="odom-rate">0</div>
+                    <div class="sensor-unit">Hz</div>
+                </div>
+                <div class="sensor">
+                    <div class="sensor-label">EKF 频率</div>
+                    <div class="sensor-value" id="filtered-rate">0</div>
+                    <div class="sensor-unit">Hz</div>
+                </div>
+                <div class="sensor">
+                    <div class="sensor-label">位置 X</div>
+                    <div class="sensor-value" id="odom-x">0</div>
+                    <div class="sensor-unit">m</div>
+                </div>
+                <div class="sensor">
+                    <div class="sensor-label">位置 Y</div>
+                    <div class="sensor-value" id="odom-y">0</div>
+                    <div class="sensor-unit">m</div>
+                </div>
+                <div class="sensor">
+                    <div class="sensor-label">朝向</div>
+                    <div class="sensor-value" id="odom-yaw">0</div>
+                    <div class="sensor-unit">°</div>
+                </div>
+                <div class="sensor">
+                    <div class="sensor-label">速度</div>
+                    <div class="sensor-value" id="odom-vx">0</div>
+                    <div class="sensor-unit">m/s</div>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 20px;">⚠️ 诊断信息</h3>
+            <div class="diagnostics" id="diagnostics"></div>
+        </div>
+
+        <!-- 右侧：控制器 -->
+        <div class="card">
+            <h2>🎮 运动控制</h2>
+
+            <div style="text-align: center;">
+                <label style="display: block; margin-bottom: 10px; font-size: 12px; color: #666;">
+                    选择控制方式：
+                </label>
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <button onclick="switchMode('joystick')" id="btn-joystick" style="flex: 1; padding: 8px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                        摇杆
+                    </button>
+                    <button onclick="switchMode('arrows')" id="btn-arrows" style="flex: 1; padding: 8px; background: #ccc; color: #666; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                        方向键
+                    </button>
+                </div>
+            </div>
+
+            <!-- 摇杆 -->
+            <div id="joystick-mode" style="display: block;">
+                <div class="joystick-container" id="joystick">
+                    <div class="joystick-bg">
+                        <div class="joystick-stick" id="stick"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 方向键 -->
+            <div id="arrows-mode" style="display: none;">
+                <div class="arrow-buttons">
+                    <div></div>
+                    <button class="arrow-btn" onmousedown="startMove(0.3, 0)" onmouseup="stopMove()" ontouchstart="startMove(0.3, 0)" ontouchend="stopMove()">⬆️</button>
+                    <div></div>
+                    <button class="arrow-btn" onmousedown="startMove(0, 0.5)" onmouseup="stopMove()" ontouchstart="startMove(0, 0.5)" ontouchend="stopMove()">⬅️</button>
+                    <button class="arrow-btn" onmousedown="startMove(0, 0)" onmouseup="stopMove()" ontouchstart="startMove(0, 0)" ontouchend="stopMove()">⏹️</button>
+                    <button class="arrow-btn" onmousedown="startMove(0, -0.5)" onmouseup="stopMove()" ontouchstart="startMove(0, -0.5)" ontouchend="stopMove()">➡️</button>
+                    <div></div>
+                    <button class="arrow-btn" onmousedown="startMove(-0.3, 0)" onmouseup="stopMove()" ontouchstart="startMove(-0.3, 0)" ontouchend="stopMove()">⬇️</button>
+                    <div></div>
+                </div>
+            </div>
+
+            <button class="stop-btn" onclick="stopMove()">🛑 紧急停止</button>
+
+            <div style="margin-top: 20px; padding: 10px; background: #f5f5f5; border-radius: 6px; font-size: 12px; color: #666;">
+                <strong>状态：</strong> <span id="status">就绪</span>
+            </div>
+        </div>
+
+        <!-- 底部：统计 -->
+        <div class="footer">
+            <div class="status-box">
+                <div class="status-label">扫描点数</div>
+                <div class="status-value" id="scan-count">0</div>
+            </div>
+            <div class="status-box">
+                <div class="status-label">IMU 样本</div>
+                <div class="status-value" id="imu-count">0</div>
+            </div>
+            <div class="status-box">
+                <div class="status-label">里程计样本</div>
+                <div class="status-value" id="odom-count">0</div>
+            </div>
+            <div class="status-box">
+                <div class="status-label">EKF 样本</div>
+                <div class="status-value" id="filtered-count">0</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const WS_URL = `ws://${window.location.hostname}:${window.location.port}/ws`;
+        let ws = null;
+        let currentLinear = 0;
+        let currentAngular = 0;
+        let joystickMode = true;
+
+        // 连接 WebSocket
+        function connectWebSocket() {
+            ws = new WebSocket(WS_URL);
+            ws.onopen = () => {
+                updateStatus("已连接");
+                console.log("✓ WebSocket 已连接");
+            };
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'status') {
+                    updateDisplay(data.data);
+                }
+            };
+            ws.onclose = () => {
+                updateStatus("已断开，重试中...");
+                setTimeout(connectWebSocket, 2000);
+            };
+            ws.onerror = (error) => {
+                updateStatus("连接错误");
+                console.error(error);
+            };
+        }
+
+        // 更新显示
+        function updateDisplay(data) {
+            document.getElementById('scan-rate').textContent = data.scan_rate_hz.toFixed(1);
+            document.getElementById('imu-rate').textContent = data.imu_rate_hz.toFixed(1);
+            document.getElementById('odom-rate').textContent = data.odom_rate_hz.toFixed(1);
+            document.getElementById('filtered-rate').textContent = data.filtered_rate_hz.toFixed(1);
+            document.getElementById('odom-x').textContent = data.odom_x.toFixed(3);
+            document.getElementById('odom-y').textContent = data.odom_y.toFixed(3);
+            document.getElementById('odom-yaw').textContent = (data.odom_yaw * 180 / Math.PI).toFixed(1);
+            document.getElementById('odom-vx').textContent = data.odom_vx.toFixed(2);
+
+            document.getElementById('scan-count').textContent = data.scan_count;
+            document.getElementById('imu-count').textContent = data.imu_count;
+            document.getElementById('odom-count').textContent = data.odom_count;
+            document.getElementById('filtered-count').textContent = data.filtered_count;
+
+            // 更新诊断
+            const diagDiv = document.getElementById('diagnostics');
+            diagDiv.innerHTML = '';
+            for (const [name, info] of Object.entries(data.diagnostics)) {
+                const level = info.level;
+                const css = level >= 2 ? 'diag-error' : level === 1 ? 'diag-warn' : 'diag-ok';
+                const levelText = level >= 2 ? '❌' : level === 1 ? '⚠️' : '✅';
+                diagDiv.innerHTML += `<div class="${css}">${levelText} ${name}</div>`;
+            }
+        }
+
+        // 发送运动命令
+        function sendMotion(linear, angular) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    action: 'move',
+                    linear: linear,
+                    angular: angular
+                }));
+            }
+        }
+
+        // 摇杆控制
+        const joystick = document.getElementById('joystick');
+        const stick = document.getElementById('stick');
+        let isDragging = false;
+
+        joystick.addEventListener('mousedown', startDrag);
+        joystick.addEventListener('touchstart', startDrag);
+        document.addEventListener('mousemove', moveDrag);
+        document.addEventListener('touchmove', moveDrag);
+        document.addEventListener('mouseup', endDrag);
+        document.addEventListener('touchend', endDrag);
+
+        function startDrag(e) {
+            if (!joystickMode) return;
+            isDragging = true;
+            moveDrag(e);
+        }
+
+        function moveDrag(e) {
+            if (!isDragging || !joystickMode) return;
+            const rect = joystick.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left - centerX;
+            const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top - centerY;
+            const distance = Math.sqrt(x * x + y * y);
+            const maxDistance = centerX - 30;
+            const ratio = Math.min(distance / maxDistance, 1);
+            const angle = Math.atan2(y, x);
+
+            const tx = Math.cos(angle) * ratio * maxDistance;
+            const ty = Math.sin(angle) * ratio * maxDistance;
+            stick.style.transform = `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px))`;
+
+            // Y 轴 = 前进，X 轴 = 转向
+            currentLinear = -ty / maxDistance * 0.5;
+            currentAngular = tx / maxDistance * 1.0;
+            sendMotion(currentLinear, currentAngular);
+        }
+
+        function endDrag() {
+            isDragging = false;
+            stick.style.transform = 'translate(-50%, -50%)';
+            currentLinear = 0;
+            currentAngular = 0;
+            sendMotion(0, 0);
+        }
+
+        // 方向键控制
+        function startMove(linear, angular) {
+            currentLinear = linear;
+            currentAngular = angular;
+            sendMotion(linear, angular);
+        }
+
+        function stopMove() {
+            currentLinear = 0;
+            currentAngular = 0;
+            sendMotion(0, 0);
+            updateStatus("已停止");
+        }
+
+        // 切换控制模式
+        function switchMode(mode) {
+            joystickMode = (mode === 'joystick');
+            document.getElementById('joystick-mode').style.display = joystickMode ? 'block' : 'none';
+            document.getElementById('arrows-mode').style.display = joystickMode ? 'none' : 'block';
+            document.getElementById('btn-joystick').style.background = joystickMode ? '#667eea' : '#ccc';
+            document.getElementById('btn-joystick').style.color = joystickMode ? 'white' : '#666';
+            document.getElementById('btn-arrows').style.background = joystickMode ? '#ccc' : '#667eea';
+            document.getElementById('btn-arrows').style.color = joystickMode ? '#666' : 'white';
+            stopMove();
+        }
+
+        // 更新状态
+        function updateStatus(msg) {
+            document.getElementById('status').textContent = msg;
+        }
+
+        // 初始化
+        connectWebSocket();
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: 'get_status' }));
+            }
+        }, 100);
+    </script>
+</body>
+</html>

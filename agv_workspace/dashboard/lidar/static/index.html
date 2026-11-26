@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LTR2 Managed Candidate</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">READ-ONLY · MANAGED CANDIDATE</p>
+      <h1>LT-R2-B 扫描观察台</h1>
+      <p class="origin">/candidate/ltr2/managed_scan，不是原厂 /scan</p>
+    </div>
+    <div id="state" class="state offline">OFFLINE</div>
+  </header>
+  <main>
+    <section class="viewer">
+      <canvas id="scan" width="1000" height="720" aria-label="激光雷达极坐标扫描"></canvas>
+      <div id="watermark" class="watermark">等待数据</div>
+      <div class="orientation"><span>前 +X</span><span>左 +Y</span></div>
+    </section>
+    <aside>
+      <div class="controls">
+        <button id="zoom-out" type="button">−</button>
+        <span id="zoom">8 m</span>
+        <button id="zoom-in" type="button">+</button>
+        <button id="pause" type="button">暂停画面</button>
+        <button id="download" type="button" disabled>下载当前快照</button>
+      </div>
+      <dl>
+        <dt>源端单调时钟年龄</dt><dd id="source-age">--</dd>
+        <dt>接收后经过</dt><dd id="receiver-age">--</dd>
+        <dt>扫描频率</dt><dd id="frequency">--</dd>
+        <dt>点数</dt><dd id="points">--</dd>
+        <dt>有效回波</dt><dd id="valid">--</dd>
+        <dt>驱动 ready</dt><dd id="ready">--</dd>
+        <dt>驱动 healthy</dt><dd id="healthy">--</dd>
+        <dt>导航已接受</dt><dd id="navigation">--</dd>
+        <dt>诊断状态</dt><dd id="diagnostic">--</dd>
+      </dl>
+      <p class="notice">仅观察。无运动、雷达控制或 ROS 服务入口。</p>
+    </aside>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

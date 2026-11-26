@@ -1,0 +1,8 @@
+[Unit]
+Description=Feedbot localhost chassis test dashboard
+
+[Service]
+Type=simple
+Environment=FEEDBOT_TEST_TOKEN_FILE=/run/feedbot-chassis-web/token
+ExecStart=/usr/bin/python3 -B /opt/feedbot-dashboard/releases/20261122-chassis02/chassis/rk_server.py
+Restart=no

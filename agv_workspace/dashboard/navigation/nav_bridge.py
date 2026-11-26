@@ -1,0 +1,766 @@
+"""导航测试网页后端：发布地图/位姿/规划路径/footprint，接收目标点。
+- GET /api/state: 地图、当前位姿、规划路径、碰撞体积(footprint)、AMCL协方差
+- POST /api/preview: 只规划不运动(compute_path_to_pose)，返回路径供确认
+- POST /api/goal: 发送 navigate_to_pose，真正执行
+- POST /api/cancel: 取消导航
+"""
+import json
+import math
+import os
+import subprocess
+import os
+import threading
+import time
+import re
+import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+import rclpy
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from nav2_msgs.action import NavigateToPose, ComputePathToPose
+from std_srvs.srv import Trigger
+from nav2_msgs.srv import LoadMap
+from nav_msgs.msg import OccupancyGrid, Path as NavPath
+from diagnostic_msgs.msg import DiagnosticArray
+from sensor_msgs.msg import LaserScan
+from rclpy.action import ActionClient
+from rclpy.node import Node
+from rcl_interfaces.msg import Parameter, ParameterType
+from rcl_interfaces.srv import SetParameters
+from tf2_ros import Buffer, TransformListener, TransformException
+from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
+
+
+FOOTPRINT = [[-0.325, -0.275], [0.325, -0.275], [0.325, 0.275], [-0.325, 0.275]]
+MAPS_ROOT = '/opt/feedbot-maps'
+
+ERROR_TEXT = {
+    200: '未知错误',
+    201: '规划器无效',
+    202: 'TF 错误',
+    203: '起点超出地图',
+    204: '目标点超出地图',
+    205: '起点被占用',
+    206: '目标点被占用',
+    207: '规划超时',
+    208: '无有效路径（目标点不可达或太靠近障碍物）',
+}
+
+
+def err_text(result):
+    msg = getattr(result, 'error_msg', '') or ''
+    text = ERROR_TEXT.get(getattr(result, 'error_code', 0), '')
+    if msg:
+        return '%s（%s）' % (text or '错误', msg)
+    return text or '错误码 %s' % getattr(result, 'error_code', 0)
+
+
+def yaw(q):
+    return math.atan2(2*(q.w*q.z + q.x*q.y), 1 - 2*(q.y*q.y + q.z*q.z))
+
+
+class State:
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.listeners = []
+        self.map = None
+        self.raw_map = None
+        self.airwall = None
+        self.pose = None
+        self.plan = None
+        self.local_plan = None
+        self.goal = None
+        self.nav_error = None
+        self.diag = None
+        self.scan = None
+        self.status = 'idle'  # idle / previewing / navigating / succeeded / aborted / cancelled / docking_nav / docking
+        self.dock = None
+        self.pre_dock = None
+        self.mapping = False
+        self.mapping_saved = None
+
+    def add_listener(self, fn):
+        with self.lock:
+            self.listeners.append(fn)
+
+    def notify(self, key, value):
+        with self.lock:
+            listeners = list(self.listeners)
+        for fn in listeners:
+            try:
+                fn(key, value)
+            except Exception:
+                pass
+
+    def set(self, key, value):
+        with self.lock:
+            setattr(self, key, value)
+            self.notify(key, value)
+
+    def snapshot(self):
+        with self.lock:
+            return dict(map=self.map, raw_map=self.raw_map, airwall=self.airwall,
+                        pose=self.pose, plan=self.plan, local_plan=self.local_plan,
+                        goal=self.goal, status=self.status, nav_error=self.nav_error,
+                        dock=self.dock, pre_dock=self.pre_dock,
+                        diag=self.diag, scan=self.scan, footprint=FOOTPRINT,
+                        mapping=self.mapping, mapping_saved=self.mapping_saved)
+
+
+class NavNode(Node):
+    def __init__(self, state):
+        super().__init__('nav_web_bridge')
+        self.state = state
+        retained = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.create_subscription(OccupancyGrid, '/map', self.map_cb, retained)
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.pose_cb, retained)
+        self.create_subscription(NavPath, '/plan', self.plan_cb, qos_profile_sensor_data)
+        self.create_subscription(NavPath, '/local_plan', self.local_plan_cb, qos_profile_sensor_data)
+        self.create_subscription(DiagnosticArray, '/diagnostics', self.diag_cb, 10)
+        self.create_subscription(LaserScan, '/scan', self.scan_cb, qos_profile_sensor_data)
+        self.nav_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
+        self.path_client = ActionClient(self, ComputePathToPose, '/compute_path_to_pose')
+        self.dock_start_client = self.create_client(Trigger, '/charge_dock/start')
+        self.dock_cancel_client = self.create_client(Trigger, '/charge_dock/cancel')
+        self.dock_undock_client = self.create_client(Trigger, '/charge_dock/undock')
+        self.dock_get_client = self.create_client(Trigger, '/charge_dock/get_dock')
+        self.dock_reload_client = self.create_client(Trigger, '/charge_dock/reload')
+        self.relocalize_client = self.create_client(Trigger, '/relocalize')
+        self.load_map_client = self.create_client(LoadMap, '/map_server/load_map')
+        self.dock_nav_active = False
+        self.dock_start_future = None
+        self.auto_charge = True
+        self.auto_charge_triggered = False
+        self.create_timer(0.05, self.update)
+
+
+    def scan_cb(self, msg):
+        try:
+            t = self.tf_buffer.lookup_transform('map', msg.header.frame_id, rclpy.time.Time())
+            tx, ty = t.transform.translation.x, t.transform.translation.y
+            q = t.transform.rotation
+            theta = math.atan2(2*(q.w*q.z + q.x*q.y), 1 - 2*(q.y*q.y + q.z*q.z))
+        except Exception:
+            return
+        pts = []
+        step = 4
+        a = msg.angle_min
+        ranges = msg.ranges
+        for i in range(0, len(ranges), step):
+            r = ranges[i]
+            if math.isfinite(r) and 0.0 < r < msg.range_max:
+                px = r * math.cos(a)
+                py = r * math.sin(a)
+                mx = tx + px*math.cos(theta) - py*math.sin(theta)
+                my = ty + px*math.sin(theta) + py*math.cos(theta)
+                pts.append([round(mx, 3), round(my, 3)])
+            a += msg.angle_increment * step
+        self.state.set('scan', pts)
+
+    def diag_cb(self, msg):
+        diag = dict(getattr(self.state, 'diag', None) or {})
+        for s in msg.status:
+            name = s.name
+            if 'chassis' in name or 'ltr2' in name or 'imu' in name.lower():
+                level = s.level[0] if isinstance(s.level, (bytes, bytearray)) else int(s.level)
+                diag[name] = dict(level=level, message=s.message,
+                                  values={v.key: v.value for v in s.values})
+        self.state.set('diag', diag)
+
+    def map_cb(self, msg):
+        m = msg
+        self.state.set('map', dict(
+            width=m.info.width, height=m.info.height, resolution=m.info.resolution,
+            origin=[m.info.origin.position.x, m.info.origin.position.y],
+            data=[int(v) for v in m.data]))
+        # 读原始 PGM 和编辑 PGM，计算空气墙差异
+        def read_pgm(path):
+            raw = open(path, 'rb').read()
+            toks = []; idx = 0
+            while len(toks) < 4:
+                while idx < len(raw) and raw[idx:idx+1] in b' \t\r\n': idx += 1
+                if raw[idx:idx+1] == b'#':
+                    while raw[idx] != 10: idx += 1
+                    continue
+                s2 = idx
+                while idx < len(raw) and raw[idx:idx+1] not in b' \t\r\n': idx += 1
+                toks.append(raw[s2:idx].decode())
+            magic, w, h, mx = toks
+            w, h, mx = int(w), int(h), int(mx)
+            idx += 1
+            return w, h, [b for b in raw[idx:idx+w*h]]
+        # PGM 像素 -> occupancy: 254=free(0), 0=occ(100), else unknown(-1)
+        def to_occ(v):
+            if v >= 250: return 0
+            if v <= 10: return 100
+            return -1
+        try:
+            rw, rh, rpix = read_pgm('/maps_raw/feedbot.pgm')
+            ew, eh, epix = read_pgm('/maps_edited/feedbot.pgm')
+            raw_occ = [to_occ(v) for v in rpix]
+            air = [0]*len(epix)
+            for i in range(len(epix)):
+                # 空气墙 = 编辑图是 occ 而原始图不是 occ
+                if to_occ(epix[i]) == 100 and raw_occ[i] != 100:
+                    air[i] = 1
+            ox, oy = m.info.origin.position.x, m.info.origin.position.y
+            self.state.set('raw_map', dict(width=rw, height=rh, resolution=0.05,
+                                           origin=[ox, oy], data=raw_occ))
+            self.state.set('airwall', dict(width=ew, height=eh,
+                                           origin=[ox, oy], data=air))
+        except Exception as e:
+            print('map file read failed:', e)
+
+    def pose_cb(self, msg):
+        p = msg.pose.pose
+        cov = msg.pose.covariance
+        import math as _m
+        self.pose_xy_std = _m.sqrt(max(cov[0], cov[7], 0.0))
+        self.state.set('pose', dict(
+            x=p.position.x, y=p.position.y, yaw=yaw(p.orientation),
+            yaw_std=math.degrees(math.sqrt(max(cov[35], 0)))))
+
+    def local_plan_cb(self, msg):
+        self.state.set('local_plan', self._path_to_map(msg))
+
+    def plan_cb(self, msg):
+        self.state.set('plan', self._path_to_map(msg))
+
+    def _path_to_map(self, msg):
+        frame = msg.header.frame_id or 'map'
+        tx, ty, theta = 0.0, 0.0, 0.0
+        if frame != 'map':
+            try:
+                t = self.tf_buffer.lookup_transform('map', frame, rclpy.time.Time())
+                tx, ty = t.transform.translation.x, t.transform.translation.y
+                q = t.transform.rotation
+                theta = math.atan2(2*(q.w*q.z + q.x*q.y), 1 - 2*(q.y*q.y + q.z*q.z))
+            except Exception:
+                pass
+        out = []
+        for pp in msg.poses:
+            x, y, a = pp.pose.position.x, pp.pose.position.y, yaw(pp.pose.orientation)
+            if frame != 'map':
+                nx = tx + x*math.cos(theta) - y*math.sin(theta)
+                ny = ty + x*math.sin(theta) + y*math.cos(theta)
+                a = a + theta
+            else:
+                nx, ny = x, y
+            out.append(dict(x=nx, y=ny, yaw=a))
+        return out
+
+    def call_trigger(self, client, timeout=5.0, service_name='service'):
+        if not client.wait_for_service(timeout_sec=timeout):
+            raise RuntimeError(service_name + ' service not available')
+        fut = client.call_async(Trigger.Request())
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if fut.done():
+                r = fut.result()
+                return r.success, r.message
+            time.sleep(0.02)
+        raise RuntimeError(service_name + ' service timeout')
+
+    def relocalize(self):
+        ok, msg = self.call_trigger(self.relocalize_client, timeout=90.0, service_name='relocalize')
+        if not ok:
+            raise RuntimeError(msg)
+        return {'ok': True, 'pose': msg}
+
+    def mapping_start(self):
+        if getattr(self, 'slam_proc', None) is not None and self.slam_proc.poll() is None:
+            raise RuntimeError('建图已在进行')
+        # 如果 slam_toolbox 已经 active（例如外部已启动），直接视为已建图
+        r = subprocess.run(
+            ['/opt/ros/jazzy/bin/ros2', 'lifecycle', 'get', '/slam_toolbox'],
+            capture_output=True, text=True, timeout=10)
+        if 'active' in r.stdout:
+            self.state.set('mapping', True)
+            return {'ok': True, 'mapping': True, 'already': True}
+        # 停定位：只对 active 节点 deactivate，已停节点跳过。
+        # 不用 lifecycle_manager manage_nodes（节点 finalized 时会卡死超时）。
+        for node in ('amcl', 'map_server'):
+            st = subprocess.run(
+                ['/opt/ros/jazzy/bin/ros2', 'lifecycle', 'get', '/' + node],
+                capture_output=True, text=True, timeout=10)
+            if 'active' in st.stdout:
+                r = subprocess.run(
+                    ['/opt/ros/jazzy/bin/ros2', 'lifecycle', 'set', '/' + node, 'deactivate'],
+                    capture_output=True, text=True, timeout=15)
+                if r.returncode != 0:
+                    raise RuntimeError('停 %s 失败: %s' % (node, (r.stderr or r.stdout)[-200:]))
+        yaml = '/work/agv_workspace/integration/mapping/config/slam_toolbox.yaml'
+        if not os.path.exists(yaml):
+            raise RuntimeError('slam_toolbox 配置不存在')
+        self.slam_proc = subprocess.Popen(
+            ['/opt/ros/jazzy/lib/slam_toolbox/async_slam_toolbox_node', '--ros-args', '--params-file', yaml,
+             '-p', 'use_sim_time:=false'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # 激活 slam_toolbox lifecycle
+        time.sleep(3)
+        for act in ('configure', 'activate'):
+            r = subprocess.run(
+                ['/opt/ros/jazzy/bin/ros2', 'lifecycle', 'set', '/slam_toolbox', act],
+                capture_output=True, text=True, timeout=20)
+            if r.returncode != 0:
+                raise RuntimeError('slam_toolbox %s 失败: %s' % (act, (r.stderr or r.stdout)[-200:]))
+        self.state.set('mapping', True)
+        return {'ok': True, 'mapping': True}
+
+    def mapping_save(self, name=None):
+        if getattr(self, 'slam_proc', None) is None:
+            raise RuntimeError('建图未启动')
+        name = re.sub(r'[^A-Za-z0-9._-]+', '_', (name or '').strip())
+        if not name:
+            name = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+        outdir = os.path.join(MAPS_ROOT, name)
+        os.makedirs(outdir, exist_ok=True)
+        r = subprocess.run(
+            ['/opt/ros/jazzy/lib/nav2_map_server/map_saver_cli', '-f', outdir + '/feedbot',
+             '--ros-args', '-p', 'save_map_timeout:=5.0'],
+            capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            raise RuntimeError('保存失败: ' + (r.stderr or r.stdout)[-300:])
+        self.state.set('mapping_saved', outdir)
+        return {'ok': True, 'name': name, 'dir': outdir}
+
+    def maps_list(self):
+        maps = []
+        if os.path.isdir(MAPS_ROOT):
+            for entry in sorted(os.listdir(MAPS_ROOT)):
+                if os.path.exists(os.path.join(MAPS_ROOT, entry, 'feedbot.yaml')):
+                    maps.append({'name': entry})
+        return {'maps': maps}
+
+    def maps_switch(self, name):
+        name = re.sub(r'[^A-Za-z0-9._-]+', '_', (name or '').strip())
+        yaml_path = os.path.join(MAPS_ROOT, name, 'feedbot.yaml')
+        if not name or not os.path.exists(yaml_path):
+            raise RuntimeError('地图不存在: ' + name)
+        if not self.load_map_client.wait_for_service(timeout_sec=5):
+            raise RuntimeError('map_server 未运行，无法切换地图')
+        request = LoadMap.Request()
+        request.map_url = yaml_path
+        future = self.load_map_client.call_async(request)
+        deadline = time.time() + 10
+        while not future.done() and time.time() < deadline:
+            time.sleep(0.02)
+        if not future.done():
+            raise RuntimeError('切换超时')
+        result = future.result()
+        if result.result != 0:
+            reasons = {1: '地图不存在', 2: '地图数据无效', 3: '地图元数据无效', 4: '未定义失败'}
+            raise RuntimeError('切换失败: ' + reasons.get(result.result, '错误码 %s' % result.result))
+        self.state.set('current_map', name)
+        return {'ok': True, 'name': name}
+
+    def mapping_stop(self):
+        if getattr(self, 'slam_proc', None) is not None:
+            self.slam_proc.terminate()
+            try:
+                self.slam_proc.wait(timeout=5)
+            except Exception:
+                self.slam_proc.kill()
+            self.slam_proc = None
+        # 恢复定位：best-effort，只在导航栈存在时才有意义，失败不阻塞停止建图
+        try:
+            subprocess.run(
+                ['/opt/ros/jazzy/bin/ros2', 'service', 'call',
+                 '/lifecycle_manager_localization/manage_nodes',
+                 'nav2_msgs/srv/ManageLifecycleNodes', '{command: 0}'],
+                capture_output=True, text=True, timeout=8)
+        except Exception:
+            pass
+        self.state.set('mapping', False)
+        return {'ok': True, 'mapping': False}
+
+    def dock_get(self):
+        ok, msg = self.call_trigger(self.dock_get_client)
+        return json.loads(msg)
+
+    def dock_calibrate(self):
+        p = self.state.pose
+        if not p:
+            raise RuntimeError('pose not ready')
+        th = p['yaw']
+        dock = {'x': p['x'] + 0.5*math.cos(th),
+                'y': p['y'] + 0.5*math.sin(th),
+                'yaw': th}
+        pre_dock = {'x': p['x'], 'y': p['y'], 'yaw': th}
+        # 通过参数设置回充节点桩位姿，然后 reload
+        for name, val in [('dock_x', dock['x']), ('dock_y', dock['y']), ('dock_yaw', dock['yaw'])]:
+            cli = self.create_client(SetParameters, '/feedbot_charge_dock/set_parameters')
+            if not cli.wait_for_service(timeout_sec=5):
+                raise RuntimeError('set_parameters service not available')
+            req = SetParameters.Request()
+            pv = Parameter()
+            pv.name = name
+            pv.value.type = ParameterType.PARAMETER_DOUBLE
+            pv.value.double_value = float(val)
+            req.parameters = [pv]
+            fut = cli.call_async(req)
+            deadline = time.time() + 5
+            while time.time() < deadline:
+                if fut.done(): break
+                time.sleep(0.02)
+            if not fut.done():
+                raise RuntimeError('set parameter timeout')
+        self.call_trigger(self.dock_reload_client)
+        self.state.set('dock', dock)
+        self.state.set('pre_dock', pre_dock)
+        return dict(dock=dock, pre_dock=pre_dock)
+
+    def dock_undock(self):
+        # 触发脱桩并等待 charge 恢复 0
+        ok, msg = self.call_trigger(self.dock_undock_client, timeout=15.0)
+        if not ok:
+            raise RuntimeError(msg)
+        deadline = time.time() + 12.0
+        while time.time() < deadline:
+            if getattr(self, 'charge_status', 0) == 0:
+                break
+            time.sleep(0.2)
+        if getattr(self, 'charge_status', 0) != 0:
+            raise RuntimeError('脱桩超时，charge 仍非 0')
+        # 脱桩后自动扫描匹配重定位
+        reloc = None
+        try:
+            reloc = self.relocalize()
+        except Exception as e:
+            reloc = {'error': str(e)}
+        return {'ok': True, 'relocalized': reloc}
+
+    def dock_start(self):
+        info = self.dock_get()
+        pre = info.get('pre_dock')
+        if not pre:
+            raise RuntimeError('dock not calibrated')
+        # 1) 导航到预对接点
+        if not self.nav_client.wait_for_server(timeout_sec=5):
+            raise RuntimeError('navigator not available')
+        goal = NavigateToPose.Goal()
+        goal.pose = PoseStamped()
+        goal.pose.header.frame_id = 'map'
+        goal.pose.pose.position.x = pre[0]
+        goal.pose.pose.position.y = pre[1]
+        yaw_goal = pre[2]
+        goal.pose.pose.orientation.z = math.sin(yaw_goal/2)
+        goal.pose.pose.orientation.w = math.cos(yaw_goal/2)
+        self.state.set('status', 'docking_nav')
+        self.state.set('goal', dict(x=pre[0], y=pre[1], yaw=yaw_goal))
+        self.dock_nav_active = True
+        self.dock_nav_future = self.nav_client.send_goal_async(goal)
+        return dict(accepted='pending')
+
+    def dock_cancel(self):
+        if self.dock_nav_active and hasattr(self, 'dock_nav_future') and self.dock_nav_future.done():
+            try:
+                self.dock_nav_future.result().cancel_goal_async()
+            except Exception:
+                pass
+        self.dock_nav_active = False
+        self.call_trigger(self.dock_cancel_client)
+        self.state.set('status', 'cancelled')
+        return dict(ok=True)
+
+    def dock_tick(self):
+        # 导航到预对接点完成后触发回充
+        if not self.dock_nav_active or not hasattr(self, 'dock_nav_future'):
+            return
+        if not self.dock_nav_future.done():
+            return
+        try:
+            handle = self.dock_nav_future.result()
+        except Exception:
+            self.dock_nav_active = False
+            self.state.set('status', 'aborted')
+            self.state.set('nav_error', 'dock nav send failed')
+            return
+        if not handle.accepted:
+            self.dock_nav_active = False
+            self.state.set('status', 'aborted')
+            self.state.set('nav_error', 'dock nav rejected')
+            return
+        rf = getattr(self, 'dock_nav_result_future', None)
+        if rf is None:
+            self.dock_nav_result_future = handle.get_result_async()
+            return
+        if not rf.done():
+            return
+        result = rf.result()
+        r = result.result if hasattr(result, 'result') else result
+        self.dock_nav_active = False
+        self.dock_nav_result_future = None
+        if r.error_code != 0:
+            self.state.set('status', 'aborted')
+            self.state.set('nav_error', 'dock nav failed: %s' % err_text(r))
+            return
+        # 异步触发回充节点（timer 回调内不能阻塞等待 service）
+        if not hasattr(self, 'dock_start_future') or self.dock_start_future is None:
+            self.dock_start_future = self.dock_start_client.call_async(Trigger.Request())
+            return
+        if not self.dock_start_future.done():
+            return
+        try:
+            r = self.dock_start_future.result()
+            ok, msg = r.success, r.message
+        except Exception as e:
+            ok, msg = False, str(e)
+        self.dock_start_future = None
+        self.state.set('status', 'docking' if ok else 'aborted')
+        if not ok:
+            self.state.set('nav_error', 'dock start failed: %s' % msg)
+
+    def auto_reloc_check(self):
+        return
+    def auto_charge_tick(self):
+        # 低电量 20 自动回充
+        if not self.auto_charge or self.auto_charge_triggered:
+            return
+        power = getattr(self, 'power', None)
+        status = self.state.status
+        if power is not None and power < 20 and status not in ('docking_nav', 'docking', 'navigating'):
+            self.auto_charge_triggered = True
+            self.get_logger().info('low power %d, auto charge triggered' % power)
+            try:
+                self.dock_start()
+            except Exception as e:
+                self.state.set('nav_error', 'auto charge failed: %s' % e)
+
+    def preview(self, x, y, yaw_goal):
+        if not self.path_client.wait_for_server(timeout_sec=5):
+            raise RuntimeError('planner not available')
+        goal = ComputePathToPose.Goal()
+        goal.goal = PoseStamped()
+        goal.goal.header.frame_id = 'map'
+        goal.goal.pose.position.x = x
+        goal.goal.pose.position.y = y
+        goal.goal.pose.orientation.z = math.sin(yaw_goal/2)
+        goal.goal.pose.orientation.w = math.cos(yaw_goal/2)
+        goal.planner_id = 'GridBased'
+        future = self.path_client.send_goal_async(goal)
+        deadline = time.time() + 10
+        while not future.done() and time.time() < deadline:
+            time.sleep(0.02)
+        if not future.done():
+            raise RuntimeError('preview timeout')
+        handle = future.result()
+        if not handle.accepted:
+            raise RuntimeError('preview rejected')
+        result_future = handle.get_result_async()
+        deadline = time.time() + 15
+        while not result_future.done() and time.time() < deadline:
+            time.sleep(0.02)
+        if not result_future.done():
+            raise RuntimeError('preview result timeout')
+        result = result_future.result()
+        r = result.result if hasattr(result, 'result') else result
+        if r.error_code != 0:
+            raise RuntimeError('预览失败：%s' % err_text(r))
+        path = [dict(x=pp.pose.position.x, y=pp.pose.position.y) for pp in r.path.poses]
+        self.state.set('plan', path)
+        self.state.set('status', 'previewing')
+        return dict(path=path, length=len(path))
+
+    def go(self, x, y, yaw_goal):
+        if getattr(self, 'charge_status', 0) > 0:
+            self.state.set('status', 'undocking')
+            self.dock_undock()
+        if not self.nav_client.wait_for_server(timeout_sec=5):
+            raise RuntimeError('navigator not available')
+        goal = NavigateToPose.Goal()
+        goal.pose = PoseStamped()
+        goal.pose.header.frame_id = 'map'
+        goal.pose.pose.position.x = x
+        goal.pose.pose.position.y = y
+        goal.pose.pose.orientation.z = math.sin(yaw_goal/2)
+        goal.pose.pose.orientation.w = math.cos(yaw_goal/2)
+        self.state.set('goal', dict(x=x, y=y, yaw=yaw_goal))
+        self.state.set('status', 'navigating')
+        self.state.set('nav_error', None)
+        self.result_future = None
+        self.nav_future = self.nav_client.send_goal_async(goal)
+        self.nav_sent = time.time()
+        return dict(accepted='pending')
+
+    def update(self):
+        try:
+            t = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+            tr = t.transform
+            q = tr.rotation
+            yawv = math.atan2(2*(q.w*q.z + q.x*q.y), 1 - 2*(q.y*q.y + q.z*q.z))
+            self.state.set('pose', dict(x=tr.translation.x, y=tr.translation.y, yaw=yawv))
+        except TransformException:
+            pass
+        self.tick_nav()
+        self.dock_tick()
+        self.auto_charge_tick()
+        self.auto_reloc_check()
+
+    def tick_nav(self):
+        nav_future = getattr(self, 'nav_future', None)
+        if nav_future is None or not nav_future.done():
+            return
+        try:
+            handle = nav_future.result()
+        except Exception:
+            self.state.set('status', 'aborted')
+            self.state.set('nav_error', '发送导航目标失败')
+            self.nav_future = None
+            self.result_future = None
+            return
+        if not handle.accepted:
+            self.state.set('status', 'aborted')
+            self.state.set('nav_error', '导航目标被拒绝')
+            self.nav_future = None
+            self.result_future = None
+            return
+        result_future = getattr(self, 'result_future', None)
+        if result_future is None:
+            self.result_future = handle.get_result_async()
+            return
+        if not result_future.done():
+            return
+        result = result_future.result()
+        r = result.result if hasattr(result, 'result') else result
+        if r.error_code == 0:
+            self.state.set('status', 'succeeded')
+            self.state.set('nav_error', None)
+        else:
+            self.state.set('status', 'aborted')
+            self.state.set('nav_error', err_text(r))
+        self.nav_future = None
+        self.result_future = None
+
+    def cancel(self):
+        if hasattr(self, 'nav_future') and self.nav_future.done():
+            try:
+                self.nav_future.result().cancel_goal_async()
+            except Exception:
+                pass
+        self.nav_future = None
+        self.result_future = None
+        self.state.set('status', 'cancelled')
+
+
+class Handler(BaseHTTPRequestHandler):
+    node = None
+    state = None
+
+    def log_message(self, *_):
+        pass
+
+    def reply(self, status, body):
+        if isinstance(body, (dict, list)):
+            body = json.dumps(body).encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == '/api/state':
+            sn = self.state.snapshot()
+            return self.reply(200, {k: v for k, v in sn.items() if k not in ('map', 'raw_map', 'airwall')})
+        if self.path == '/api/map':
+            sn = self.state.snapshot()
+            return self.reply(200, {'map': sn.get('map'), 'footprint': sn.get('footprint')})
+        if self.path == '/api/maps':
+            return self.reply(200, self.node.maps_list())
+        if self.path == '/api/stream':
+            return self.stream()
+        self.reply(404, {'error': 'unknown'})
+
+    def stream(self):
+        import queue
+        q = queue.Queue(maxsize=100)
+        def notify(key, value):
+            if key in ('pose', 'plan', 'local_plan', 'status', 'goal'):
+                try:
+                    q.put_nowait((key, value))
+                except queue.Full:
+                    pass
+        self.state.add_listener(notify)
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Connection', 'keep-alive')
+        self.end_headers()
+        # 初始快照
+        sn = self.state.snapshot()
+        for key in ('pose', 'plan', 'local_plan', 'status', 'goal'):
+            self.wfile.write(('data: ' + json.dumps({'k': key, 'v': sn.get(key)}) + '\n\n').encode())
+            self.wfile.flush()
+        try:
+            while True:
+                try:
+                    key, value = q.get(timeout=15)
+                except queue.Empty:
+                    self.wfile.write(b': ping\n\n')
+                    self.wfile.flush()
+                    continue
+                self.wfile.write(('data: ' + json.dumps({'k': key, 'v': value}) + '\n\n').encode())
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def do_POST(self):
+        size = int(self.headers.get('Content-Length', '0'))
+        if not 0 < size <= 4096:
+            return self.reply(400, {'error': 'bad size'})
+        body = json.loads(self.rfile.read(size))
+        try:
+            if self.path == '/api/preview':
+                return self.reply(200, self.node.preview(body['x'], body['y'], body.get('yaw', 0)))
+            if self.path == '/api/goal':
+                return self.reply(200, self.node.go(body['x'], body['y'], body.get('yaw', 0)))
+            if self.path == '/api/cancel':
+                self.node.cancel()
+                return self.reply(200, {'ok': True})
+            if self.path == '/api/relocalize':
+                return self.reply(200, self.node.relocalize())
+            if self.path == '/api/mapping/start':
+                return self.reply(200, self.node.mapping_start())
+            if self.path == '/api/mapping/save':
+                return self.reply(200, self.node.mapping_save(body.get('name')))
+            if self.path == '/api/mapping/stop':
+                return self.reply(200, self.node.mapping_stop())
+            if self.path == '/api/maps/switch':
+                return self.reply(200, self.node.maps_switch(body.get('name')))
+            if self.path == '/api/dock/get':
+                return self.reply(200, self.node.dock_get())
+            if self.path == '/api/dock/calibrate':
+                return self.reply(200, self.node.dock_calibrate())
+            if self.path == '/api/dock/start':
+                return self.reply(200, self.node.dock_start())
+            if self.path == '/api/dock/cancel':
+                return self.reply(200, self.node.dock_cancel())
+            if self.path == '/api/dock/undock':
+                return self.reply(200, self.node.dock_undock())
+        except Exception as error:
+            return self.reply(500, {'error': str(error)})
+        self.reply(404, {'error': 'unknown'})
+
+
+def main():
+    rclpy.init()
+    state = State()
+    node = NavNode(state)
+    Handler.node = node
+    Handler.state = state
+    server = ThreadingHTTPServer(('0.0.0.0', 8098), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    print('nav bridge at 0.0.0.0:8098')
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

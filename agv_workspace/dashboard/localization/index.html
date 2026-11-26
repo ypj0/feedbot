@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Feedbot 实时定位</title>
+<style>body{margin:0;background:#172530;color:#e6eef4;font:16px system-ui}header,aside{padding:18px}h1{font-size:24px;margin:0 0 12px}main{display:flex;gap:10px}canvas{width:65vw;height:78vh;background:#40515d}aside{flex:1;min-width:230px}pre{white-space:pre-wrap;word-break:break-word;font-size:12px}p{line-height:1.6}#status{color:#ffcf70}@media(max-width:700px){main{display:block}canvas{width:100vw;height:60vh}}</style></head>
+<body><header><h1>实时定位 · 只读观测</h1><div id="status">正在连接；尚未就绪</div></header>
+<main><canvas id="map" aria-label="已保存地图、实时激光和车体"></canvas><aside>
+<p>红色箭头：当前 TF 车体位置；蓝色：实时激光；橙色圆圈：最近一条 AMCL 估计。</p>
+<p>地图固定，车体与激光实时更新。数据就绪不等于定位正确；全局重定位后须确认激光贴墙、位置和朝向符合现场。</p>
+<h2>当前车体（TF）</h2><div id="robot">无当前位姿</div>
+<h2>AMCL 同帧估计</h2><div id="amcl">等待新估计</div>
+<h2>独立核验</h2><div id="verification">等待同帧几何核验</div>
+<p>不确定度不是实际误差；静止时 AMCL 不必持续更新。AMCL 位姿、时间戳、协方差始终配对，不与当前 TF 拼接。</p>
+<p>本页无运动、电机释放、原厂地图加载或回充接口。请勿在未确认采集开始前推动。</p>
+<details><summary>诊断与数据来源</summary><pre id="detail"></pre></details>
+</aside></main><script src="/app.js"></script></body></html>

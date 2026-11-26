@@ -1,0 +1,44 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# C/C++ / ROS 构建产物
+build/
+install/
+*.o
+*.a
+*.so
+*.dylib
+
+# 依赖副本，避免重复提交
+vendor/
+node_modules/
+
+# 大体积证据与运行数据
+analysis/
+ltme_node/
+agv_workspace/acceptance/runs/
+diagnostics/recordings/
+
+# 原厂大文件与文档
+*.apk
+*.apk*
+*.zip
+*.tar.gz
+*.tgz
+*.pdf
+*.docx
+*.pptx
+
+# 图片与运行日志
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.log

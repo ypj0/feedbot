@@ -1,0 +1,43 @@
+# 第一阶段公共底座契约：周期、时间窗、队列长度、限幅、话题/服务名在此只定义一次。
+# 其他配置（controllers.yaml、ekf.yaml、chassis.urdf、session.hpp）中重复出现的同名数值，
+# 以及 msg 里的枚举常量，必须与此一致；由 check_contract.py 静态核对，不一致即失败。
+# 注意：这里是“核对”而不是“生成”，重复的数值仍存在于那些文件里。
+#
+# 来源标注：
+#   [实测/已有配置]  来自现有部署配置或验收记录
+#   [提案]           首版提案值，需用户确认并经现场验证后再冻结
+/**:
+  ros__parameters:
+    feedbot_contract:
+      timing:
+        control_rate_hz: 50              # [已有配置] controllers.yaml update_rate、ekf.yaml frequency
+        lease_timeout_ms: 300            # [提案] 旧网页摇杆 100 ms 发一次，留 3 个周期余量；也是松手后归零的上限
+        max_stamp_age_ms: 100            # [提案] 请求时间戳允许落后于接收时刻的上限
+        max_stamp_lead_ms: 50            # [提案] 请求时间戳允许领先的上限
+        downstream_cmd_vel_timeout_ms: 200   # [已有配置] 必须等于 controllers.yaml wheel.cmd_vel_timeout，MotionAuthority 掉线时的第二道保险
+        status_rate_hz: 10               # [提案] 状态话题发布频率，必须整除 control_rate_hz
+        stats_period_s: 1.0             # [提案] 诊断与性能统计降频到 1 Hz
+        control_step_p99_budget_ms: 10   # [用户目标] 现有 wheel.update 最大仅 0.38 ms，须在车机上实测 MotionAuthority 本身
+      limits:
+        max_linear_mps: 0.5              # [提案] 硬上限，超限直接拒绝而不是裁剪；Nav2 部署上限为 0.3
+        max_angular_rps: 1.0             # [提案] Nav2 部署上限为 0.5
+        request_queue_depth: 10          # [提案] 订阅队列深度，有界；核心只保存最新有效命令
+      topics:
+        motion_request: /motion/request
+        motion_status: /motion/status
+        motion_perf: /motion/perf
+        wheel_cmd_vel: /wheel/cmd_vel
+        wheel_odom: /wheel/odom
+        imu: /imu
+        scan: /scan
+        ekf_odom: /odometry/filtered
+      services:
+        acquire_lease: /motion/acquire_lease
+        release_lease: /motion/release_lease
+        clear_fault: /motion/clear_fault
+      frames:
+        odom: odom
+        base: base_link
+      chassis_nominal:                   # [已有配置] 名义值，1B 标定有实测证据后才同步修改三处
+        wheel_radius_m: 0.085
+        wheel_separation_m: 0.455

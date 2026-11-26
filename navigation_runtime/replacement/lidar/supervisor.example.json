@@ -1,0 +1,12 @@
+{
+  "owner_directory": "/run/feedbot-lidar",
+  "navigation_inhibit": ["/opt/feedbot-nav2/site/navigation_inhibit_and_verify"],
+  "factory_off": ["/usr/bin/python3", "/opt/feedbot-nav2/lidar/owner_client.py", "factory_off"],
+  "factory_on": ["/usr/bin/python3", "/opt/feedbot-nav2/lidar/owner_client.py", "factory_on"],
+  "owner_status": ["/usr/bin/python3", "/opt/feedbot-nav2/lidar/owner_client.py", "status"],
+  "factory_healthy": ["/opt/feedbot-nav2/site/verify_factory_scan_and_navigation_inhibit"],
+  "wait_free": ["/usr/bin/python3", "/opt/feedbot-nav2/lidar/wait_ports_free.py"],
+  "native_start": ["/bin/bash", "/opt/feedbot-nav2/lidar/native_container.sh", "start"],
+  "native_stop": ["/bin/bash", "/opt/feedbot-nav2/lidar/native_container.sh", "stop"],
+  "transition": ["/bin/bash", "/opt/feedbot-nav2/lidar/native_container.sh", "transition"]
+}

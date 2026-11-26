@@ -1,0 +1,4 @@
+wheel:
+  ros__parameters:
+    twist_covariance_diagonal: [0.04, 1000.0, 1000.0, 1000.0, 1000.0, 0.04]
+    pose_covariance_diagonal: [1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0]

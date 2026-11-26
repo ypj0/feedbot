@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feedbot 导航</title>
+<style>
+:root{--bg:#f2f5f9;--card:#fff;--bd:#d7e0ea;--t1:#13202e;--t2:#556374;--t3:#92a0af;--blue:#246bdb;--green:#1f9d61;--red:#d84d45;--yel:#d3a226}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;font-family:'PingFang SC','Hiragino Sans GB','Microsoft YaHei',system-ui,sans-serif;background:var(--bg);color:var(--t1);overflow:hidden}
+.hdr{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:rgba(255,255,255,.92);border-bottom:1px solid var(--bd)}
+.hdr-l,.hdr-r{display:flex;align-items:center;gap:12px}
+.hdr-l b{font-size:15px}
+.conn{display:flex;align-items:center;gap:7px;padding:6px 12px;border:1px solid var(--bd);border-radius:999px;font-size:12px;color:var(--t2);background:#fff}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--red)}
+.dot.on{background:var(--green)}
+.badge{padding:6px 12px;border-radius:999px;font-size:12px;font-weight:700;background:#eef3f8;color:var(--t2)}
+.badge.nav{background:#eef4ff;color:var(--blue)}
+.badge.suc{background:#e7f6ee;color:var(--green)}
+.badge.err{background:#fdeceb;color:var(--red)}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 340px;height:calc(100% - 52px)}
+.map-area{position:relative;background:#e8eef5;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+.map-hint{position:absolute;left:12px;bottom:12px;padding:7px 12px;background:rgba(255,255,255,.88);border:1px solid var(--bd);border-radius:999px;font-size:11px;color:var(--t2)}
+.rpanel{display:flex;flex-direction:column;background:#f6f8fb;border-left:1px solid var(--bd);overflow-y:auto;padding:12px}
+.tabs{display:flex;gap:6px;background:#fff;border:1px solid var(--bd);border-radius:14px;padding:5px;margin-bottom:12px;position:sticky;top:0;z-index:5}
+.tab{flex:1;text-align:center;padding:9px 0;font-size:12px;font-weight:700;color:var(--t3);border-radius:10px;cursor:pointer}
+.tab.active{color:var(--t1);background:#eef3f8}
+.tb{display:none;flex-direction:column;gap:12px}
+.tb.active{display:flex}
+.sec{background:#fff;border:1px solid var(--bd);border-radius:14px;padding:13px}
+.sec-t{font-size:10px;font-weight:800;letter-spacing:1px;color:var(--t3);margin-bottom:10px}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 12px;border:1px solid var(--bd);border-radius:10px;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:var(--t1)}
+.btn:hover{background:#f2f6fa}
+.btn.p{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.s{background:#eaf7f0;border-color:#cfe9dc;color:#1c7d4d}
+.btn.d{background:#fff5f4;border-color:#f0cac7;color:#b53a34}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chk{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--t2);margin:10px 0}
+.pose{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
+.pose-i{background:#f7fafc;border:1px solid #edf2f7;border-radius:10px;padding:8px 6px;text-align:center}
+.pose-i .l{font-size:9px;color:var(--t3)}
+.pose-i .v{font-size:13px;font-weight:700;font-family:monospace}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.si{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f8fafc;border:1px solid transparent;border-radius:10px}
+.si .k{font-size:11px;color:var(--t2)}
+.si .v{font-size:11px;font-weight:700;margin-left:auto;font-family:monospace;text-align:right}
+.hint{font-size:11px;color:var(--t2);line-height:1.55;margin-top:10px;padding:9px 11px;background:#f7fafc;border:1px solid #e8eef4;border-radius:10px}
+.angle-box{text-align:center;padding:14px 0}
+.angle-v{font-size:38px;font-weight:800;font-family:monospace;color:var(--blue)}
+.angle-u{font-size:13px;color:var(--t3);margin-left:3px}
+.goal-info{font-size:11px;color:var(--t2);font-family:monospace;line-height:1.6;word-break:break-all}
+</style>
+</head>
+<body>
+<header class="hdr">
+  <div class="hdr-l">
+    <div class="conn"><span class="dot" id="connDot"></span><span id="connText">连接中…</span></div>
+    <b>Feedbot 导航</b>
+  </div>
+  <div class="hdr-r"><span class="badge" id="statusBadge">idle</span></div>
+</header>
+<main class="app">
+  <div class="map-area">
+    <canvas id="map"></canvas>
+    <div class="map-hint" id="mapHint">点击地图选择目标点</div>
+  </div>
+  <aside class="rpanel">
+    <div class="tabs">
+      <div class="tab active" data-tab="0">导航</div>
+      <div class="tab" data-tab="1">目标角度</div>
+      <div class="tab" data-tab="2">状态</div>
+    </div>
+    <div class="tb active" id="tb0">
+      <div class="sec">
+        <div class="sec-t">目标点</div>
+        <div class="goal-info" id="goalInfo">尚未选择</div>
+        <label class="chk"><input id="autoYaw" type="checkbox" checked> 自动朝向目标</label>
+        <div class="btns">
+          <button class="btn s" id="preview">预览路径</button>
+          <button class="btn p" id="go">执行导航</button>
+          <button class="btn d" id="cancel">取消/停止</button>
+        </div>
+        <div class="btns" style="margin-top:6px">
+          <button class="btn s" id="dockCalibrate">设置充电桩</button>
+          <button class="btn p" id="dockStart">开始回充</button>
+          <button class="btn d" id="dockCancel">取消回充</button>
+        </div>
+        <div class="btns" style="margin-top:6px">
+          <button class="btn p" id="dockUndock">脱桩</button>
+        </div>
+        <div class="btns" style="margin-top:6px">
+          <button class="btn s" id="mapStart">开始建图</button>
+          <button class="btn p" id="mapSave">保存地图</button>
+          <button class="btn d" id="mapStop">停止建图</button>
+        </div>
+        <div class="btns" style="margin-top:6px">
+          <input id="mapName" placeholder="地图名（可选，默认时间戳）" style="flex:1;padding:7px 9px;border:1px solid var(--bd,#d7e0ea);border-radius:6px;font-size:13px">
+        </div>
+        <div class="btns" style="margin-top:6px">
+          <select id="mapSelect" style="flex:1;padding:7px 9px;border:1px solid var(--bd,#d7e0ea);border-radius:6px;font-size:13px"></select>
+          <button class="btn s" id="mapSwitch">切换地图</button>
+        </div>
+        <div class="btns" style="margin-top:6px">
+          <button class="btn s" id="relocalize">重新定位</button>
+        </div>
+        <div class="hint" id="action">就绪</div>
+      </div>
+    </div>
+    <div class="tb" id="tb1">
+      <div class="sec">
+        <div class="sec-t">目标朝向</div>
+        <div class="angle-box"><span class="angle-v" id="angleDeg">0</span><span class="angle-u">°</span></div>
+        <div class="hint">左侧为局部地图，按住拖动可旋转虚拟车身到目标朝向。</div>
+        <button class="btn p" id="backNav" style="width:100%;margin-top:10px">完成，返回导航</button>
+      </div>
+    </div>
+    <div class="tb" id="tb2">
+      <div class="sec">
+        <div class="sec-t">导航状态</div>
+        <div class="pose">
+          <div class="pose-i"><div class="l">X</div><div class="v" id="poseX">-</div></div>
+          <div class="pose-i"><div class="l">Y</div><div class="v" id="poseY">-</div></div>
+          <div class="pose-i"><div class="l">Yaw</div><div class="v" id="poseYaw">-</div></div>
+        </div>
+        <div class="sg" id="navGrid"></div>
+      </div>
+      <div class="sec">
+        <div class="sec-t">车辆状态</div>
+        <div class="sg" id="vehGrid"></div>
+      </div>
+    </div>
+  </aside>
+</main>
+<script>
+const canvas=document.getElementById('map');
+const ctx=canvas.getContext('2d');
+let savedMap=null,current=null,goal=null,previewPath=null,tab=0,dragging=false;
+const FOOT=[[-0.325,-0.275],[0.325,-0.275],[0.325,0.275],[-0.325,0.275]];
+const VIEW=1.8;
+function $(id){return document.getElementById(id)}
+
+function setTab(i){
+  tab=i;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',+t.dataset.tab===i));
+  document.querySelectorAll('.tb').forEach(t=>t.classList.toggle('active',t.id==='tb'+i));
+  canvas.style.cursor=i===1?'grab':'crosshair';
+  $('mapHint').textContent=i===1?'按住拖动旋转目标朝向':(i===2?'查看车辆与导航状态':'点击地图选择目标点');
+  draw();
+}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>setTab(+t.dataset.tab));
+$('backNav').onclick=()=>setTab(0);
+
+function viewTransform(w,h){
+  if(tab===1){
+    const c=goal||(current&&current.pose);
+    const cxw=c?c.x:0, cyw=c?c.y:0;
+    const scale=Math.min(w,h)/VIEW*0.88;
+    return {scale,px:x=>(w/2)+(x-cxw)*scale,py:y=>(h/2)-(y-cyw)*scale,wx:px=>cxw+(px-w/2)/scale,wy:py=>cyw+((h/2)-py)/scale};
+  }
+  const scale=Math.min(w/savedMap.width,h/savedMap.height)*0.96;
+  const ox=(w-savedMap.width*scale)/2, oy=(h+savedMap.height*scale)/2;
+  return {scale,px:x=>ox+(x-savedMap.origin[0])/savedMap.resolution*scale,py:y=>oy-(y-savedMap.origin[1])/savedMap.resolution*scale,wx:px=>savedMap.origin[0]+(px-ox)/scale*savedMap.resolution,wy:py=>savedMap.origin[1]+(oy-py)/scale*savedMap.resolution};
+}
+
+function draw(){
+  const dpr=window.devicePixelRatio||1;
+  const w=canvas.clientWidth,h=canvas.clientHeight;
+  canvas.width=Math.round(w*dpr);
+  canvas.height=Math.round(h*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.imageSmoothingEnabled=false;
+  ctx.fillStyle='#e8eef5';ctx.fillRect(0,0,w,h);
+  const map=savedMap;if(!map)return;
+  const T=viewTransform(w,h);
+  drawCells(T,w,h);
+  if(current&&current.scan&&current.scan.length){
+    ctx.fillStyle='rgba(255,90,90,0.75)';
+    for(const pt of current.scan){const x=T.px(pt[0]),y=T.py(pt[1]);ctx.fillRect(x-1,y-1,2,2);}
+  }
+  if(tab===1){
+    const c=goal||(current&&current.pose);
+    if(c)drawCar(c,T,true);
+    return;
+  }
+  const st=(current&&current.status)||'idle';
+  if(st==='previewing'||st==='navigating'){
+    const gp=(current&&current.plan&&current.plan.length)?current.plan:previewPath;
+    if(gp&&gp.length){
+      ctx.save();ctx.setLineDash([6,8]);ctx.globalAlpha=0.55;ctx.strokeStyle='#57d98a';ctx.lineWidth=2;ctx.beginPath();
+      gp.forEach((p,i)=>{const x=T.px(p.x),y=T.py(p.y);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();
+      ctx.restore();
+    }
+  }
+  if(current&&current.local_plan&&current.local_plan.length){ctx.strokeStyle='#ff9500';ctx.lineWidth=2.5;ctx.beginPath();current.local_plan.forEach((p,i)=>{const x=T.px(p.x),y=T.py(p.y);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();}
+  if(goal){
+    const x=T.px(goal.x),y=T.py(goal.y);
+    ctx.fillStyle='#0f0';ctx.beginPath();ctx.arc(x,y,6,0,2*Math.PI);ctx.fill();
+    ctx.save();ctx.translate(x,y);ctx.rotate(-goal.yaw);
+    const len=0.35/map.resolution*T.scale;
+    ctx.strokeStyle='#00c98d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(len,0);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(len,0);ctx.lineTo(len-7,-5);ctx.lineTo(len-7,5);ctx.closePath();ctx.fillStyle='#00c98d';ctx.fill();
+    ctx.restore();
+  }
+  if(current&&current.pose)drawCar(current.pose,T,false);
+}
+
+function drawCells(T,w,h){
+  const map=savedMap;
+  const w0=T.wx(0),w1=T.wx(w),y0=T.wy(h),y1=T.wy(0);
+  const minx=Math.min(w0,w1),maxx=Math.max(w0,w1),miny=Math.min(y0,y1),maxy=Math.max(y0,y1);
+  const gx0=Math.max(0,Math.floor((minx-map.origin[0])/map.resolution));
+  const gx1=Math.min(map.width-1,Math.ceil((maxx-map.origin[0])/map.resolution));
+  const gy0=Math.max(0,Math.floor((miny-map.origin[1])/map.resolution));
+  const gy1=Math.min(map.height-1,Math.ceil((maxy-map.origin[1])/map.resolution));
+  for(let gy=gy0;gy<=gy1;gy++){
+    for(let gx=gx0;gx<=gx1;gx++){
+      const v=map.data[gy*map.width+gx];
+      ctx.fillStyle=v<0?'#b9c4cf':(v>=50?'#2a3540':'#f4f8fb');
+      const x0=T.px(map.origin[0]+gx*map.resolution);
+      const x1=T.px(map.origin[0]+(gx+1)*map.resolution);
+      const y0=T.py(map.origin[1]+(gy+1)*map.resolution);
+      const y1=T.py(map.origin[1]+gy*map.resolution);
+      ctx.fillRect(x0,y0,Math.max(1,Math.round(x1-x0)),Math.max(1,Math.round(y1-y0)));
+    }
+  }
+}
+
+function drawCar(c,T,ghost){
+  const x=T.px(c.x),y=T.py(c.y);
+  ctx.save();ctx.translate(x,y);ctx.rotate(-c.yaw);
+  const w=0.65*T.scale,h=0.55*T.scale;
+  if(ghost){
+    ctx.fillStyle='rgba(255,212,0,.34)';
+    ctx.fillRect(-w/2,-h/2,w,h);
+    ctx.strokeStyle='#d9a400';ctx.lineWidth=2;ctx.strokeRect(-w/2,-h/2,w,h);
+  }else{
+    ctx.strokeStyle='#ffd400';ctx.lineWidth=2;ctx.strokeRect(-w/2,-h/2,w,h);
+  }
+  ctx.strokeStyle='#ff5968';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(w*0.42,0);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(w*0.42,0);ctx.lineTo(w*0.42-9,-7);ctx.lineTo(w*0.42-9,7);ctx.closePath();ctx.fillStyle='#ff5968';ctx.fill();
+  ctx.restore();
+}
+
+function worldFromEvent(e){
+  const rect=canvas.getBoundingClientRect();
+  const T=viewTransform(canvas.clientWidth,canvas.clientHeight);
+  return [T.wx(e.clientX-rect.left),T.wy(e.clientY-rect.top)];
+}
+function updateAngle(e){
+  const[gx,gy]=worldFromEvent(e);
+  goal.yaw=Math.atan2(gy-goal.y,gx-goal.x);
+  $('autoYaw').checked=false;
+  syncAngle();draw();
+}
+function syncAngle(){
+  $('angleDeg').textContent=goal?((goal.yaw*180/Math.PI+360)%360).toFixed(0):'0';
+}
+
+canvas.addEventListener('click',e=>{
+  if(!savedMap||tab!==0)return;
+  const[gx,gy]=worldFromEvent(e);
+  const col=Math.floor((gx-savedMap.origin[0])/savedMap.resolution);
+  const row=Math.floor((gy-savedMap.origin[1])/savedMap.resolution);
+  const cell=(row>=0&&row<savedMap.height&&col>=0&&col<savedMap.width)?savedMap.data[row*savedMap.width+col]:-1;
+  let yaw=goal?goal.yaw:0;
+  if($('autoYaw').checked&&current&&current.pose)yaw=Math.atan2(gy-current.pose.y,gx-current.pose.x);
+  goal={x:gx,y:gy,yaw};
+  if(cell>=50){previewPath=null;$('action').textContent='该点是障碍物，无法作为目标';}
+  else if(cell<0){$('action').textContent='该点区域未知，可能无法规划';}
+  else{$('action').textContent='已选目标 ('+gx.toFixed(2)+','+gy.toFixed(2)+')';}
+  $('goalInfo').textContent='('+gx.toFixed(2)+', '+gy.toFixed(2)+')  朝向 '+(yaw*180/Math.PI).toFixed(0)+'°';
+  syncAngle();draw();
+});
+canvas.addEventListener('mousedown',e=>{if(tab===1&&goal){dragging=true;canvas.style.cursor='grabbing';updateAngle(e);}});
+canvas.addEventListener('mousemove',e=>{if(tab===1&&dragging&&goal)updateAngle(e);});
+canvas.addEventListener('mouseup',()=>{dragging=false;if(tab===1)canvas.style.cursor='grab';});
+canvas.addEventListener('mouseleave',()=>{dragging=false;});
+
+async function post(path,data){
+  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  return r.json();
+}
+$('preview').onclick=async()=>{if(!goal){alert('先点地图选点');return;}$('action').textContent='预览中…';const r=await post('/api/preview',goal);if(r.error){previewPath=null;$('action').textContent='预览失败：'+(r.error||'无路径');}else{previewPath=r.path||null;$('action').textContent='预览成功：'+(r.length||0)+' 个路径点';}draw();};
+$('go').onclick=async()=>{if(!goal){alert('先点地图选点');return;}$('action').textContent='下发导航中…';const r=await post('/api/goal',goal);if(r.error){$('action').textContent='导航失败：'+r.error;}else{$('action').textContent='已下发导航指令，等待执行';}};
+$('cancel').onclick=async()=>{await post('/api/cancel',{});$('action').textContent='已取消/停止';};
+$('dockCalibrate').onclick=async()=>{if(!confirm('请确认车辆已停在充电桩正前方 50cm，车头朝向充电桩。\n设置当前位姿为充电桩？'))return;$('action').textContent='正在设置充电桩…';try{const r=await post('/api/dock/calibrate',{});if(r.error){$('action').textContent='设置失败：'+r.error;}else{$('action').textContent='充电桩已设置，位置：('+r.dock.x.toFixed(2)+', '+r.dock.y.toFixed(2)+')';}}catch(e){$('action').textContent='设置失败：'+e.message;}};
+$('dockStart').onclick=async()=>{if(!confirm('开始回充？车辆将导航到充电桩前，原地掉头后倒车入桩。'))return;$('action').textContent='回充启动中…';try{const r=await post('/api/dock/start',{});if(r.error){$('action').textContent='回充启动失败：'+r.error;}else{$('action').textContent='回充已启动，正在导航到充电桩';}}catch(e){$('action').textContent='回充启动失败：'+e.message;}};
+$('dockCancel').onclick=async()=>{try{await post('/api/dock/cancel',{});$('action').textContent='已取消回充';}catch(e){$('action').textContent='取消失败：'+e.message;}};
+$('relocalize').onclick=async()=>{$('action').textContent='正在扫描匹配定位…';try{const r=await post('/api/relocalize',{});if(r.error){$('action').textContent='重定位失败：'+r.error;}else{$('action').textContent='重定位成功：('+r.pose+')';}}catch(e){$('action').textContent='重定位失败：'+e.message;}};
+$('dockUndock').onclick=async()=>{$('action').textContent='正在脱桩…';try{const r=await post('/api/dock/undock',{});if(r.error){$('action').textContent='脱桩失败：'+r.error;}else{$('action').textContent='已脱桩';}}catch(e){$('action').textContent='脱桩失败：'+e.message;}};
+$('mapStart').onclick=async()=>{$('action').textContent='正在启动建图…';try{const r=await post('/api/mapping/start',{});if(r.error){$('action').textContent='建图启动失败：'+r.error;}else{$('action').textContent='建图已启动，请推车扫描';}}catch(e){$('action').textContent='建图启动失败：'+e.message;}};
+$('mapSave').onclick=async()=>{$('action').textContent='正在保存地图…';try{const r=await post('/api/mapping/save',{name:$('mapName').value});if(r.error){$('action').textContent='保存失败：'+r.error;}else{$('action').textContent='地图已保存：'+r.name;refreshMaps();}}catch(e){$('action').textContent='保存失败：'+e.message;}};
+$('mapStop').onclick=async()=>{$('action').textContent='正在停止建图…';try{const r=await post('/api/mapping/stop',{});if(r.error){$('action').textContent='停止失败：'+r.error;}else{$('action').textContent='建图已停止';}}catch(e){$('action').textContent='停止失败：'+e.message;}};
+async function refreshMaps(){try{const r=await fetch('/api/maps').then(x=>x.json());const sel=$('mapSelect');sel.innerHTML='';for(const m of (r.maps||[])){const o=document.createElement('option');o.value=m.name;o.textContent=m.name;sel.appendChild(o);}}catch(e){}}
+$('mapSwitch').onclick=async()=>{const name=$('mapSelect').value;if(!name){alert('没有可选地图');return;}if(!confirm('切换到地图 '+name+' ？'))return;$('action').textContent='正在切换地图…';try{const r=await post('/api/maps/switch',{name});if(r.error){$('action').textContent='切换失败：'+r.error;}else{$('action').textContent='已切换地图：'+name;}}catch(e){$('action').textContent='切换失败：'+e.message;}};
+refreshMaps();
+
+function renderStatus(){
+  if(!current)return;
+  const p=current.pose;
+  $('poseX').textContent=p?p.x.toFixed(2):'-';
+  $('poseY').textContent=p?p.y.toFixed(2):'-';
+  $('poseYaw').textContent=p?(p.yaw*180/Math.PI).toFixed(0)+'°':'-';
+  const nav=[['状态',current.status||'idle'],['建图',current.mapping?'进行中':'未启动'],['导航错误',current.nav_error||'-'],['路径点',(current.plan&&current.plan.length)||'-']];
+  $('navGrid').innerHTML=nav.map(([k,v])=>'<div class="si"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>').join('');
+  const d=current.diag||{};
+  const BOOL={motor_free:{'1':'已释放','0':'已使能'},emergency:{'1':'急停','0':'正常'},charge:{'1':'充电中','0':'未充电'}};
+  const veh=[];
+  for(const name in d){
+    const s=d[name],v=s.values||{};
+    if(name.includes('chassis')){
+      veh.push(['电机',BOOL.motor_free&&BOOL.motor_free[v.motor_free]||v.motor_free||'-']);
+      veh.push(['充电',BOOL.charge&&BOOL.charge[v.charge]||v.charge||'-']);
+      veh.push(['急停',BOOL.emergency&&BOOL.emergency[v.emergency]||v.emergency||'-']);
+      veh.push(['电源',v.power||'-']);
+    }else if(name.includes('ltr2')){
+      veh.push(['雷达频率',v.frame_rate_hz?(+v.frame_rate_hz).toFixed(1)+'Hz':'-']);
+      veh.push(['雷达状态',v.state||'-']);
+    }else if(name.toLowerCase().includes('imu')){
+      veh.push(['IMU',v.state||'-']);
+    }
+  }
+  $('vehGrid').innerHTML=veh.length?veh.map(([k,v])=>'<div class="si"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>').join(''):'<div class="hint" style="margin:0">等待车辆状态数据…</div>';
+}
+
+async function poll(){
+  try{
+    const r=await fetch('/api/state',{cache:'no-store',signal:AbortSignal.timeout(1500)});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    current=await r.json();
+    $('connDot').classList.add('on');$('connText').textContent='已连接';
+    renderStatus();
+    const st=current.status||'idle';
+    $('statusBadge').textContent=st;
+    $('statusBadge').className='badge '+(st==='succeeded'?'suc':(st==='navigating'?'nav':(st==='aborted'?'err':'')));
+    if(current.nav_error){$('action').textContent='导航失败：'+current.nav_error;}
+    else if(st==='succeeded'){$('action').textContent='导航成功';}
+    if(st==='succeeded'||st==='aborted'||st==='cancelled')previewPath=null;
+  }catch(e){
+    $('connDot').classList.remove('on');$('connText').textContent='连接中断';
+  }
+  draw();
+  setTimeout(poll,300);
+}
+
+async function loadMap(){
+  try{
+    const r=await fetch('/api/map',{cache:'no-store',signal:AbortSignal.timeout(1500)});
+    if(r.ok){
+      const d=await r.json();
+      if(d.map){savedMap=d.map;draw();}
+    }
+  }catch(e){}
+  setTimeout(loadMap,800);
+}
+window.addEventListener('resize',draw);
+loadMap();
+poll();
+</script>
+</body>
+</html>

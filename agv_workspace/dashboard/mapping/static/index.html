@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Feedbot · 手推建图</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<header><div><small>FEEDBOT / ROS 2 MAPPING</small><h1>手推建图 <span>实时观测</span></h1></div><div id="status" role="status">连接中…</div></header>
+<main>
+  <section class="map-panel">
+    <div class="toolbar"><strong>当前地图</strong><button id="fit">全图</button><button id="follow" aria-pressed="false">跟随车体</button><span>滚轮缩放 · 拖动平移</span></div>
+    <canvas id="map" width="1000" height="700" aria-label="地图、激光与车体位置"></canvas>
+    <div class="legend"><span class="robot">● 车体 / 朝向</span><span class="laser">● 激光</span><span class="path">━ 本页轨迹</span><span id="mapInfo">等待地图</span></div>
+    <div id="warnings" role="status">等待数据</div>
+  </section>
+  <aside>
+    <section><h2>手推建图流程</h2><div id="mappingState" class="metric">等待建图数据</div>
+      <ol><li>在实物上解锁电机，确认车轮可自由滚动。</li><li>先推 20–30 cm，核对左右轮位置、里程计和地图车体同步变化。</li><li>缓慢推行覆盖目标区域，转弯放慢，避免遮挡雷达。</li><li>完成后停稳，点击保存地图，下载 YAML 和 PGM 放在同一目录。</li></ol>
+      <p class="note">本页不发送运动或电机解锁指令。只调用 ROS 2 保存，不调用原厂建图、脱桩、回充或地图加载服务。</p>
+      <button id="saveMap" disabled>完成扫描，保存地图</button>
+      <p id="saveState" role="status">正在读取保存结果…</p><div id="downloads"></div>
+      <p class="note">每次保存生成独立目录，不覆盖旧地图；保存后建图仍运行，不自动切换定位。保存结果只对应保存时刻。</p>
+      <div class="pending">重载定位：未验收</div>
+    </section>
+    <section><h2>底盘与手推反馈</h2><div id="feedbackState" class="metric">等待读数</div><dl id="chassis"></dl>
+      <p class="note">motor_free 为 MCU 原始值，极性未验证；不等同于原厂 APP 的使能枚举，不能据此判定已解锁。电量同样显示原始字段。</p>
+    </section>
+    <section><h2>数据链路</h2><table><thead><tr><th>数据</th><th>距接收</th><th>状态</th></tr></thead><tbody id="streams"></tbody></table><p class="note">地图可保留最近一次结果；激光、位姿和轮反馈分别检查新鲜度。界面轮询频率不是传感器帧率。</p></section>
+    <section><h2>当前位姿 · map</h2><dl id="pose"></dl><p class="note">轨迹仅为本页接收的位姿连线，刷新即清除，不是保存的地图或轮式里程计。</p><details><summary>诊断与 TF 原始信息</summary><pre id="detail"></pre></details></section>
+  </aside>
+</main>
+<script src="/app.js"></script>
+</body></html>

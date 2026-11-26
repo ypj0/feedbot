@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AGV 底盘测试</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<main>
+<header><h1>AGV 底盘测试</h1><strong id="connection">连接中 · 禁止运动</strong></header>
+<p class="notice">每次点击按所选时长发送低速指令：直行 ±0.05 m/s，转向 ±0.10 rad/s。不排队、不自动续跑。关闭网页或通信断开不会取消已接受的定时脉冲；实际停车需现场确认，网页停止不能替代实体急停。</p>
+<section class="controls">
+<label for="duration">单次时长：</label><select id="duration"><option value="0.5" selected>0.5 秒 · 方向检查</option><option value="5">5 秒 · 约 0.25 米 / 29°</option><option value="10">10 秒 · 约 0.50 米 / 57°</option></select>
+<p>距离和角度只是指令估算，不是定距/定角停车。标定前记录起点，停稳后用卷尺或角度基准独立测量，再保存当前读数。</p>
+<button data-action="forward" disabled>↑ 前进</button>
+<div><button data-action="left" disabled>↶ 左转</button><button id="stop">停止</button><button data-action="right" disabled>↷ 右转</button></div>
+<button data-action="backward" disabled>↓ 后退</button>
+</section>
+<p id="result" role="status">尚未发送运动指令</p>
+<section class="grid">
+<article><h2>实时反馈</h2><dl id="telemetry"></dl><p id="age"></p></article>
+<article><h2>轮式里程计轨迹 · 非定位结果</h2><canvas id="plot" width="560" height="320"></canvas><button id="mark">记录起点</button><button id="save">保存当前读数</button><p id="displacement">未记录起点</p></article>
+</section>
+<details><summary>底盘诊断与协方差</summary><pre id="details"></pre></details>
+<footer>原厂导航服务在独占测试期间停止。本页展示轮式里程计，不代表 EKF 或导航验收通过。基础运动实车通过，精度未量化；协方差待地面标定验证。</footer>
+</main><script src="/app.js"></script></body></html>

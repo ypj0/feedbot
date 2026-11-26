@@ -1,0 +1,122 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>地图可通行区域编辑</title>
+<style>
+body{font-family:-apple-system,sans-serif;margin:16px;background:#222;color:#eee}
+h1{font-size:16px}
+#canvas{border:1px solid #555;cursor:crosshair;image-rendering:pixelated;background:#333}
+#hint{font-size:12px;color:#aaa;margin:6px 0}
+#status{font-size:13px;margin:8px 0}
+button{font-size:14px;padding:6px 12px;margin-right:8px}
+</style>
+</head>
+<body>
+<h1>地图可通行区域编辑：点击顶点画闭合多边形，内部可通行，外部封墙</h1>
+<div id="hint">点击添加顶点；双击最后一个点即闭合并生成。</div>
+<canvas id="canvas"></canvas>
+<div id="status">加载中…</div>
+<button id="undo">撤销上一个点</button>
+<button id="clear">清空</button>
+<button id="generate">闭合并生成修正地图</button>
+<a id="download" style="display:none">下载修正 PGM</a>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let meta = null, baseCanvas = null, points = [];
+
+async function loadMap() {
+  const metaRes = await fetch('/map.meta');
+  meta = await metaRes.json();
+  const pgmRes = await fetch('/map.pgm');
+  const buf = await pgmRes.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let idx = 0, tokens = [];
+  while (tokens.length < 4) {
+    while (idx < bytes.length && [32,9,13,10].includes(bytes[idx])) idx++;
+    if (bytes[idx] === 35) { while (bytes[idx] !== 10) idx++; continue; }
+    let s = idx;
+    while (idx < bytes.length && ![32,9,13,10].includes(bytes[idx])) idx++;
+    tokens.push(new TextDecoder().decode(bytes.slice(s, idx)));
+  }
+  idx++;
+  const [magic, w, h] = tokens;
+  const scale = Math.min(640 / w, 920 / h, 5);
+  canvas.width = Math.round(w * scale);
+  canvas.height = Math.round(h * scale);
+  const img = ctx.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) {
+    const v = bytes[idx + i];
+    let g;
+    if (v >= 250) g = 245; else if (v <= 10) g = 20; else g = 120;
+    img.data[i*4] = g; img.data[i*4+1] = g; img.data[i*4+2] = g; img.data[i*4+3] = 255;
+  }
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  off.getContext('2d').putImageData(img, 0, 0);
+  baseCanvas = document.createElement('canvas');
+  baseCanvas.width = canvas.width; baseCanvas.height = canvas.height;
+  const bctx = baseCanvas.getContext('2d');
+  bctx.imageSmoothingEnabled = false;
+  bctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+  redraw();
+  document.getElementById('status').textContent = `地图 ${w}×${h} 格，点击画闭合多边形`;
+}
+function redraw() {
+  if (!baseCanvas) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(baseCanvas, 0, 0);
+  if (points.length) {
+    ctx.strokeStyle = '#ff0'; ctx.lineWidth = 2; ctx.beginPath();
+    for (let i = 0; i < points.length; i++) {
+      const px = points[i][0] / meta.width * canvas.width;
+      const py = points[i][1] / meta.height * canvas.height;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    if (points.length > 2) {
+      const [x,y] = points[0];
+      ctx.lineTo(x / meta.width * canvas.width, y / meta.height * canvas.height);
+    }
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#f00';
+  for (const [x,y] of points) {
+    ctx.beginPath();
+    ctx.arc(x / meta.width * canvas.width, y / meta.height * canvas.height, 3, 0, 2*Math.PI);
+    ctx.fill();
+  }
+}
+canvas.addEventListener('click', e => {
+  if (!meta) return;
+  const rect = canvas.getBoundingClientRect();
+  const sx = (e.clientX - rect.left) / canvas.width * meta.width;
+  const sy = (e.clientY - rect.top) / canvas.height * meta.height;
+  points.push([sx, sy]);
+  redraw();
+});
+canvas.addEventListener('dblclick', generate);
+document.getElementById('undo').onclick = () => { points.pop(); redraw(); };
+document.getElementById('clear').onclick = () => { points = []; redraw(); };
+document.getElementById('generate').onclick = generate;
+async function generate() {
+  if (points.length < 3) { alert('至少需要 3 个顶点'); return; }
+  const res = await fetch('/edit', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({polygon: points})
+  });
+  const out = await res.json();
+  document.getElementById('status').textContent = res.ok ?
+    `已生成：free=${out.free} occ=${out.occ} unknown=${out.unknown}` :
+    '错误：' + JSON.stringify(out);
+  if (res.ok) {
+    const d = document.getElementById('download');
+    d.href = '/map_edited.pgm';
+    d.download = 'map_edited.pgm';
+    d.style.display = 'inline';
+  }
+}
+loadMap();
+</script>
+</body>
+</html>

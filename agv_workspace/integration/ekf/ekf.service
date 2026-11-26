@@ -1,0 +1,11 @@
+[Unit]
+Description=Feedbot planar wheel and gyro EKF
+Requires=feedbot-nav2-engine.service
+After=feedbot-nav2-engine.service
+
+[Service]
+Type=simple
+ExecStart=/opt/feedbot-nav2/docker/docker -H unix:///run/feedbot-nav2-docker.sock run --rm --name feedbot-ekf --network host --ipc host -e ROS_DOMAIN_ID=89 -e ROS_LOCALHOST_ONLY=1 -e RMW_IMPLEMENTATION=rmw_fastrtps_cpp -v /opt/feedbot-integration/releases/20261122-imu-ekf-v1:/work:ro --entrypoint /bin/bash feedbot-navigation:jazzy-20261122 -c 'source /opt/ros/jazzy/setup.bash; exec ros2 launch /work/agv_workspace/integration/ekf/ekf.launch.py'
+ExecStop=/opt/feedbot-nav2/docker/docker -H unix:///run/feedbot-nav2-docker.sock stop -t 10 feedbot-ekf
+TimeoutStopSec=20
+Restart=no

@@ -1,0 +1,5 @@
+<library path="feedbot_chassis_system">
+  <class name="feedbot_chassis_ros2/ChassisSystem" type="feedbot_chassis_ros2::ChassisSystem" base_class_type="hardware_interface::SystemInterface">
+    <description>Single feedbot chassis, measured incremental wheel positions.</description>
+  </class>
+</library>

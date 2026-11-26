@@ -1,0 +1,42 @@
+--- factory_original
++++ factory_with_owner
+@@ -602,6 +602,8 @@
+         self.loading_imu()
+ 
+         # 启动scan        
++        from feedbot_factory_owner import FactoryOwner
++        self.lidar_owner = FactoryOwner(self)
+         self.loading_scan()
+ 
+         # 启动rola
+@@ -1380,7 +1382,7 @@
+                 self.loading_imu()
+                 rospy.loginfo("imu挂死，重启imu成功!")
+             
+-            if self.scan_status >= 20 and self.init_status == 1 and self.startScan == True and self.startDebug == False:
++            if self.scan_status >= 20 and self.init_status == 1 and self.startScan == True and self.startDebug == False and self.lidar_owner.mode() == 'factory':
+                 # scan 僵死，重启scan，workaround
+                 self.scan_status = 0
+                 rospy.loginfo("开始scan重启！")
+@@ -2067,6 +2069,12 @@
+ 
+     # 激光
+     def loading_scan(self):
++        return self.lidar_owner.loading()
++
++    def shutdown_scan(self):
++        return self.lidar_owner.shutdown()
++
++    def vendor_loading_scan(self):
+         if self.startScan == False:
+             return
+     
+@@ -2084,7 +2092,7 @@
+         except:
+             rospy.loginfo("尝试启动激光失败!")
+ 
+-    def shutdown_scan(self):
++    def vendor_shutdown_scan(self):
+         try:
+             if self.scan_launch_flag:
+                 rospy.loginfo("关闭激光")
