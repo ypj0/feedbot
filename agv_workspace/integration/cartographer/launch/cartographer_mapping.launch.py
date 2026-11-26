@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from launch import LaunchDescription
+from launch.actions import ExecuteProcess
 from launch_ros.actions import Node
 
 
@@ -30,6 +31,10 @@ def generate_launch_description():
                 {"use_sim_time": False},
                 {"resolution": 0.05},
             ],
+            output="screen",
+        ),
+        ExecuteProcess(
+            cmd=["python3", "-B", str(Path(__file__).parent.parent / "cartographer_web_api.py")],
             output="screen",
         ),
     ])

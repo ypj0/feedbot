@@ -13,6 +13,9 @@ import threading
 import time
 import re
 import datetime
+import urllib.error
+import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -34,6 +37,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
 
 FOOTPRINT = [[-0.325, -0.275], [0.325, -0.275], [0.325, 0.275], [-0.325, 0.275]]
 MAPS_ROOT = '/opt/feedbot-maps'
+CART_API = 'http://127.0.0.1:8099'
 
 ERROR_TEXT = {
     200: '未知错误',
@@ -117,6 +121,7 @@ class NavNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.pose_cb, retained)
+        self.create_subscription(PoseStamped, '/tracked_pose', self.tracked_pose_cb, qos_profile_sensor_data)
         self.create_subscription(NavPath, '/plan', self.plan_cb, qos_profile_sensor_data)
         self.create_subscription(NavPath, '/local_plan', self.local_plan_cb, qos_profile_sensor_data)
         self.create_subscription(DiagnosticArray, '/diagnostics', self.diag_cb, 10)
@@ -223,6 +228,13 @@ class NavNode(Node):
             x=p.position.x, y=p.position.y, yaw=yaw(p.orientation),
             yaw_std=math.degrees(math.sqrt(max(cov[35], 0)))))
 
+    def tracked_pose_cb(self, msg):
+        p = msg.pose
+        self.pose_xy_std = 0.0
+        self.state.set('pose', dict(
+            x=p.position.x, y=p.position.y, yaw=yaw(p.orientation),
+            yaw_std=0.0))
+
     def local_plan_cb(self, msg):
         self.state.set('local_plan', self._path_to_map(msg))
 
@@ -270,62 +282,39 @@ class NavNode(Node):
             raise RuntimeError(msg)
         return {'ok': True, 'pose': msg}
 
+    def cart_request(self, method, path, body=None):
+        data = json.dumps(body or {}).encode() if body is not None else None
+        request = urllib.request.Request(CART_API + path, data=data, method=method)
+        if data is not None:
+            request.add_header('Content-Type', 'application/json')
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                raw = response.read().decode() or '{}'
+                return json.loads(raw)
+        except urllib.error.HTTPError as error:
+            raw = error.read().decode() or error.reason
+            try:
+                message = json.loads(raw).get('error', raw)
+            except Exception:
+                message = raw
+            raise RuntimeError(message)
+        except urllib.error.URLError as error:
+            raise RuntimeError('Cartographer web api unreachable: %s' % error.reason)
+
     def mapping_start(self):
-        if getattr(self, 'slam_proc', None) is not None and self.slam_proc.poll() is None:
-            raise RuntimeError('建图已在进行')
-        # 如果 slam_toolbox 已经 active（例如外部已启动），直接视为已建图
-        r = subprocess.run(
-            ['/opt/ros/jazzy/bin/ros2', 'lifecycle', 'get', '/slam_toolbox'],
-            capture_output=True, text=True, timeout=10)
-        if 'active' in r.stdout:
-            self.state.set('mapping', True)
-            return {'ok': True, 'mapping': True, 'already': True}
-        # 停定位：只对 active 节点 deactivate，已停节点跳过。
-        # 不用 lifecycle_manager manage_nodes（节点 finalized 时会卡死超时）。
-        for node in ('amcl', 'map_server'):
-            st = subprocess.run(
-                ['/opt/ros/jazzy/bin/ros2', 'lifecycle', 'get', '/' + node],
-                capture_output=True, text=True, timeout=10)
-            if 'active' in st.stdout:
-                r = subprocess.run(
-                    ['/opt/ros/jazzy/bin/ros2', 'lifecycle', 'set', '/' + node, 'deactivate'],
-                    capture_output=True, text=True, timeout=15)
-                if r.returncode != 0:
-                    raise RuntimeError('停 %s 失败: %s' % (node, (r.stderr or r.stdout)[-200:]))
-        yaml = '/work/agv_workspace/integration/mapping/config/slam_toolbox.yaml'
-        if not os.path.exists(yaml):
-            raise RuntimeError('slam_toolbox 配置不存在')
-        self.slam_proc = subprocess.Popen(
-            ['/opt/ros/jazzy/lib/slam_toolbox/async_slam_toolbox_node', '--ros-args', '--params-file', yaml,
-             '-p', 'use_sim_time:=false'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        # 激活 slam_toolbox lifecycle
-        time.sleep(3)
-        for act in ('configure', 'activate'):
-            r = subprocess.run(
-                ['/opt/ros/jazzy/bin/ros2', 'lifecycle', 'set', '/slam_toolbox', act],
-                capture_output=True, text=True, timeout=20)
-            if r.returncode != 0:
-                raise RuntimeError('slam_toolbox %s 失败: %s' % (act, (r.stderr or r.stdout)[-200:]))
+        status = self.cart_request('GET', '/status')
+        if not status.get('mapping'):
+            raise RuntimeError('Cartographer 轨迹未激活')
         self.state.set('mapping', True)
-        return {'ok': True, 'mapping': True}
+        return {'ok': True, 'mapping': True, 'already': True}
 
     def mapping_save(self, name=None):
-        if getattr(self, 'slam_proc', None) is None:
-            raise RuntimeError('建图未启动')
         name = re.sub(r'[^A-Za-z0-9._-]+', '_', (name or '').strip())
         if not name:
             name = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
-        outdir = os.path.join(MAPS_ROOT, name)
-        os.makedirs(outdir, exist_ok=True)
-        r = subprocess.run(
-            ['/opt/ros/jazzy/lib/nav2_map_server/map_saver_cli', '-f', outdir + '/feedbot',
-             '--ros-args', '-p', 'save_map_timeout:=5.0'],
-            capture_output=True, text=True, timeout=15)
-        if r.returncode != 0:
-            raise RuntimeError('保存失败: ' + (r.stderr or r.stdout)[-300:])
-        self.state.set('mapping_saved', outdir)
-        return {'ok': True, 'name': name, 'dir': outdir}
+        result = self.cart_request('POST', '/save?' + urllib.parse.urlencode({'name': name}))
+        self.state.set('mapping_saved', result.get('dir'))
+        return {'ok': True, 'name': result.get('name', name), 'dir': result.get('dir')}
 
     def maps_list(self):
         maps = []
@@ -358,22 +347,7 @@ class NavNode(Node):
         return {'ok': True, 'name': name}
 
     def mapping_stop(self):
-        if getattr(self, 'slam_proc', None) is not None:
-            self.slam_proc.terminate()
-            try:
-                self.slam_proc.wait(timeout=5)
-            except Exception:
-                self.slam_proc.kill()
-            self.slam_proc = None
-        # 恢复定位：best-effort，只在导航栈存在时才有意义，失败不阻塞停止建图
-        try:
-            subprocess.run(
-                ['/opt/ros/jazzy/bin/ros2', 'service', 'call',
-                 '/lifecycle_manager_localization/manage_nodes',
-                 'nav2_msgs/srv/ManageLifecycleNodes', '{command: 0}'],
-                capture_output=True, text=True, timeout=8)
-        except Exception:
-            pass
+        self.cart_request('POST', '/finish')
         self.state.set('mapping', False)
         return {'ok': True, 'mapping': False}
 
