@@ -74,6 +74,10 @@ def generate_launch_description():
             output="screen",
         ),
         ExecuteProcess(
+            cmd=["python3", "-B", str(Path(__file__).parent / "scan_front_filter.py")],
+            output="screen",
+        ),
+        ExecuteProcess(
             cmd=["python3", "-B", str(Path(__file__).parent / "tracked_pose_relay.py")],
             output="screen",
         ),

@@ -42,7 +42,10 @@ class FrontScanFilter(Node):
         out.scan_time = msg.scan_time
         out.range_min = msg.range_min
         out.range_max = msg.range_max
-        out.ranges = msg.ranges[start_index:end_index + 1]
+        out.ranges = [
+            float('inf') if value < 0.35 else value
+            for value in msg.ranges[start_index:end_index + 1]
+        ]
         if len(msg.intensities) == len(msg.ranges):
             out.intensities = msg.intensities[start_index:end_index + 1]
         self.pub.publish(out)
