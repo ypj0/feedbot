@@ -87,6 +87,7 @@ class ChargeDockNode(Node):
 
         self.dock = None          # [x, y, yaw]
         self.pre_dock = None      # [x, y, yaw]
+        self.docked_pose = None   # 初始点：车实际停靠桩上的地图位姿 [x, y, yaw]
         self.robot = None         # [x, y, yaw]
         self.charge_status = 0
         self.scan = None          # 最新 LaserScan
@@ -142,6 +143,8 @@ class ChargeDockNode(Node):
         self.srv_cancel = self.create_service(Trigger, '/charge_dock/cancel', self.cancel_cb)
         self.srv_undock = self.create_service(Trigger, '/charge_dock/undock', self.undock_cb)
         self.srv_calibrate = self.create_service(Trigger, '/charge_dock/calibrate', self.calibrate_cb)
+        self.srv_calibrate_docked = self.create_service(
+            Trigger, '/charge_dock/calibrate_docked', self.calibrate_docked_cb)
         self.srv_reload = self.create_service(Trigger, '/charge_dock/reload', self.reload_cb)
         self.srv_get_dock = self.create_service(Trigger, '/charge_dock/get_dock', self.get_dock_cb)
         self.create_timer(1.0 / self.freq, self.control_tick)
@@ -175,6 +178,14 @@ class ChargeDockNode(Node):
                 self.template = None
                 self.template_pose = None
                 self.get_logger().warn('charge dock config has no laser template')
+            dp = cfg.get('docked_pose')
+            if dp and all(k in dp for k in ('x', 'y', 'yaw')):
+                self.docked_pose = [float(dp['x']), float(dp['y']), float(dp['yaw'])]
+                self.get_logger().info(
+                    'docked pose loaded: %.3f %.3f %.3f' % tuple(self.docked_pose))
+            else:
+                self.docked_pose = None
+                self.get_logger().warn('charge dock config has no docked pose')
         except FileNotFoundError:
             self.get_logger().warn('charge dock config not found: %s' % self.cfg_path)
         except Exception as e:
@@ -289,6 +300,25 @@ class ChargeDockNode(Node):
                     plate if plate is not None else float('nan'), offset))
             return resp
 
+    def calibrate_docked_cb(self, req, resp):
+        """初始点：车辆已上桩并充电，记录当前实际停靠位姿。"""
+        with self.lock:
+            if self.robot is None:
+                resp.success = False
+                resp.message = 'robot pose not ready'
+                return resp
+            if not (0 < self.charge_status < 5):
+                resp.success = False
+                resp.message = '未检测到充电状态，请确认已上桩并充电'
+                return resp
+            self.docked_pose = [self.robot[0], self.robot[1], self.robot[2]]
+            resp.success = True
+            resp.message = json.dumps(
+                {'docked_pose': {'x': self.docked_pose[0], 'y': self.docked_pose[1],
+                                 'yaw': self.docked_pose[2]}}, ensure_ascii=False)
+            self.get_logger().info('docked pose calibrated: %s' % resp.message)
+            return resp
+
     def reload_cb(self, req, resp):
         # 标定通过 set_parameters 设置 dock_x/y/yaw；优先参数，其次配置文件
         dx = self.get_parameter('dock_x').value
@@ -401,7 +431,7 @@ class ChargeDockNode(Node):
                     self.stop_motion()
                     self.get_logger().info('approach done, entering final')
             else:
-                if not self.final_step(robot, self.dock):
+                if not self.final_step(robot, self.docked_target()):
                     self.failed = True
                     self.failure_reason = 'final progress stopped'
                     self.active = False
@@ -424,6 +454,13 @@ class ChargeDockNode(Node):
             rel = relative_pose(self.final_start_odom, self.odom)
             return compose_pose(self.final_start_pose, rel)
         return self.corrected_robot()
+
+    def docked_target(self):
+        """最终倒车目标：初始点（上桩实测位姿）；无初始点时退回桩位姿。"""
+        if self.docked_pose is None:
+            return self.dock
+        return [self.docked_pose[0], self.docked_pose[1],
+                norm_angle(self.docked_pose[2] - math.pi)]
 
     def search_tick(self):
         """原厂搜索段：旋转并 ICP 匹配桩模板；锁定后给出相对 Cartographer 的修正。"""

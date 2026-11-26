@@ -134,6 +134,8 @@ class NavNode(Node):
         self.dock_cancel_client = self.create_client(Trigger, '/charge_dock/cancel')
         self.dock_undock_client = self.create_client(Trigger, '/charge_dock/undock')
         self.dock_calibrate_client = self.create_client(Trigger, '/charge_dock/calibrate')
+        self.dock_calibrate_docked_client = self.create_client(
+            Trigger, '/charge_dock/calibrate_docked')
         self.dock_get_client = self.create_client(Trigger, '/charge_dock/get_dock')
         self.dock_reload_client = self.create_client(Trigger, '/charge_dock/reload')
         self.relocalize_client = self.create_client(Trigger, '/relocalize')
@@ -520,6 +522,28 @@ class NavNode(Node):
         return {'dock': info['dock'], 'pre_dock': info['pre_dock'],
                 'template_points': len(info.get('template', {}).get('points', []))}
 
+    def dock_calibrate_docked(self):
+        ok, msg = self.call_trigger(self.dock_calibrate_docked_client,
+                                    timeout=10.0, service_name='dock docked calibrate')
+        if not ok:
+            raise RuntimeError(msg)
+        info = json.loads(msg)
+        path = os.path.join(MAPS_ROOT, 'charge_dock_config.json')
+        cfg = {}
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = {}
+        cfg['docked_pose'] = info['docked_pose']
+        tmp = path + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, ensure_ascii=False)
+        os.replace(tmp, path)
+        self.call_trigger(self.dock_reload_client, timeout=5.0,
+                          service_name='dock reload')
+        return {'docked_pose': info['docked_pose']}
+
     def dock_undock(self):
         # 触发脱桩并等待 charge 恢复 0
         ok, msg = self.call_trigger(self.dock_undock_client, timeout=15.0)
@@ -559,6 +583,8 @@ class NavNode(Node):
         self.state.set('status', 'docking_nav')
         self.state.set('goal', dict(x=pre[0], y=pre[1], yaw=yaw_goal))
         self.dock_nav_active = True
+        self.dock_nav_result_future = None
+        self.dock_start_future = None
         self.dock_nav_future = self.nav_client.send_goal_async(goal)
         return dict(accepted='pending')
 
@@ -569,6 +595,8 @@ class NavNode(Node):
             except Exception:
                 pass
         self.dock_nav_active = False
+        self.dock_nav_result_future = None
+        self.dock_start_future = None
         self.call_trigger(self.dock_cancel_client)
         self.state.set('status', 'cancelled')
         return dict(ok=True)
@@ -862,6 +890,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, self.node.dock_get())
             if self.path == '/api/dock/calibrate':
                 return self.reply(200, self.node.dock_calibrate())
+            if self.path == '/api/dock/calibrate_docked':
+                return self.reply(200, self.node.dock_calibrate_docked())
             if self.path == '/api/dock/start':
                 return self.reply(200, self.node.dock_start())
             if self.path == '/api/dock/cancel':
