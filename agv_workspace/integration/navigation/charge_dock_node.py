@@ -406,6 +406,11 @@ class ChargeDockNode(Node):
             self.stop_motion()
             self.get_logger().info('dock search timeout')
             return
+        self.search_count += 1
+        self.search_rotate()
+        # ICP 较重，降低到约 6.7Hz，旋转仍按 20Hz 输出
+        if self.search_count % 3 != 0:
+            return
         if self.scan is None or self.robot is None:
             self.publish_cmd(0.0, 0.0)
             return
@@ -427,8 +432,10 @@ class ChargeDockNode(Node):
                 'dock template locked: rms=%.4f inliers=%.2f correction=%s'
                 % (rms, inliers, self.pose_correction))
             return
+
+    def search_rotate(self):
+        """原厂 foundChargePoint 计数规律的左右扫描角速度。"""
         self.searching = True
-        self.search_count += 1
         c = self.search_count
         if c <= 149 or (c > 449 and c <= 749):
             w = -self.search_rotate_speed
