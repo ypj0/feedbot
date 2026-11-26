@@ -269,11 +269,11 @@ class ImuNode : public rclcpp::Node {
             uint32_t batch_gyro_count = 0;
             for (ssize_t index = 0; index < count; ++index) {
                 const auto receipt = feedbot_chassis::steady_seconds();
-                const auto gyro = stream_.push(bytes[index], receipt);
-                if (gyro) {
+                const auto sample = stream_.push(bytes[index], receipt);
+                if (sample) {
                     if (received_ > 0) max_gyro_receipt_gap_ = std::max(max_gyro_receipt_gap_, receipt - last_gyro_);
                     const auto publish_started = feedbot_chassis::steady_seconds();
-                    latest_publisher_->submit(message(*gyro, now()));
+                    latest_publisher_->submit(message(*sample, now()));
                     ++handoff_;
                     const auto publish_finished = feedbot_chassis::steady_seconds();
                     const auto publish_duration = publish_finished - publish_started;

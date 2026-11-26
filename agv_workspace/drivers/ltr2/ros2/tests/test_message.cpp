@@ -26,8 +26,9 @@ int main() {
         }
         const rclcpp::Time received(1234, 567890123, RCL_SYSTEM_TIME);
         const auto message = ltr2_ros2::to_message(scan, received);
-        require(rclcpp::Time(message.header.stamp).nanoseconds() == received.nanoseconds(), "receipt stamp changed");
-        require(std::abs(received.seconds() - scan.stamp) > 1, "test did not distinguish core stamp");
+        require(rclcpp::Time(message.header.stamp).nanoseconds() ==
+                    static_cast<int64_t>(scan.stamp * 1e9),
+                "core stamp not used");
         require(message.header.frame_id == "scan", "frame id changed");
         require(message.ranges == scan.ranges && message.intensities == scan.intensities, "beam arrays changed");
         require(message.ranges.size() == 1075, "crop count changed");

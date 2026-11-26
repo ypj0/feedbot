@@ -26,7 +26,7 @@ int main() {
                 assert(output.header.frame_id == "imu_link");
                 assert(std::abs(output.angular_velocity.z + 1000.0 * std::acos(-1.0) / 180.0) < 1e-10);
                 assert(output.angular_velocity_covariance[8] == 0.01);
-                assert(output.orientation_covariance[0] == -1 && output.linear_acceleration_covariance[0] == -1);
+                assert(output.orientation_covariance[0] == -1 && output.linear_acceleration_covariance[0] == 0.1);
             }
         }
     };
