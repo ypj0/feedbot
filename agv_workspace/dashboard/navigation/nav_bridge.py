@@ -123,6 +123,7 @@ class NavNode(Node):
         self.state = state
         retained = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(OccupancyGrid, '/map', self.map_cb, retained)
+        self.create_subscription(OccupancyGrid, '/map_live', self.live_map_cb, retained)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.pose_cb, retained)
@@ -210,6 +211,11 @@ class NavNode(Node):
             width=m.info.width, height=m.info.height, resolution=m.info.resolution,
             origin=[m.info.origin.position.x, m.info.origin.position.y],
             data=[int(v) for v in m.data]))
+
+    def live_map_cb(self, msg):
+        # 建图时优先显示实时地图 /map_live；非建图时忽略，保持静态地图
+        if getattr(self.state, 'mapping', False):
+            self.map_cb(msg)
 
     def pose_cb(self, msg):
         p = msg.pose.pose
@@ -560,8 +566,24 @@ class NavNode(Node):
         return {'ok': True, 'name': name}
 
     def mapping_stop(self):
-        self.cart_request('POST', '/finish')
+        try:
+            self.cart_request('POST', '/finish')
+        except Exception:
+            pass
         self.state.set('mapping', False)
+        # 停掉建图容器，切回当前地图的定位容器，并重载静态地图
+        name = (getattr(self.state, 'current_map', None) or '').strip()
+        if not name:
+            try:
+                name = open(os.path.join(MAPS_ROOT, 'current_map.txt')).read().strip()
+            except Exception:
+                name = ''
+        if name:
+            try:
+                self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
+            except Exception:
+                pass
+            self.load_static_map(name)
         return {'ok': True, 'mapping': False}
 
     def load_dock_state(self):

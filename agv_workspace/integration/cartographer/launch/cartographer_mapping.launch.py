@@ -32,6 +32,7 @@ def generate_launch_description():
                 {"use_sim_time": False},
                 {"resolution": 0.05},
             ],
+            remappings=[("map", "/map_live")],
             output="screen",
         ),
         ExecuteProcess(

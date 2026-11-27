@@ -320,6 +320,7 @@ function drawNavPoints(T){
 }
 
 function drawDock(T){
+  if(current&&current.mapping)return;
   const dp=current&&current.docked_pose;
   if(!dp||dp.x==null||dp.y==null)return;
   const x=T.px(dp.x),y=T.py(dp.y);
