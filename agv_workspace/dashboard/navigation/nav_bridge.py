@@ -608,15 +608,25 @@ class NavNode(Node):
                 current = open(os.path.join(MAPS_ROOT, 'current_map.txt')).read().strip()
             except Exception:
                 current = ''
-        if name != current:
+        changed = name != current
+        if changed:
             # 切图会重定位，必须在上桩充电状态完成，避免桩外猜测位姿。
             if not (0 < getattr(self, 'charge_status', 0) < 5):
                 raise RuntimeError('切换地图必须在充电桩上完成，请先上桩充电')
             self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
             self.load_nav_map(name)
             self.state.set('mapping', False)
+        result = self.load_static_map(name)
+        if changed:
+            # load_static_map 已写入 current_map.txt；此时让回充节点按新地图
+            # 重载充电点/初始点，避免继续使用上一张图残留的 dock 位姿。
+            try:
+                self.call_trigger(self.dock_reload_client, timeout=5.0,
+                                  service_name='dock reload')
+            except Exception:
+                pass
             self.auto_relocalize()
-        return self.load_static_map(name)
+        return result
 
     def maps_delete(self, name):
         name = re.sub(r'[^A-Za-z0-9._-]+', '_', (name or '').strip())
