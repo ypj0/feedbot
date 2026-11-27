@@ -37,6 +37,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
 FOOTPRINT = [[-0.325, -0.275], [0.325, -0.275], [0.325, 0.275], [-0.325, 0.275]]
 MAPS_ROOT = '/opt/feedbot-maps'
 CART_API = 'http://127.0.0.1:8099'
+MGR_API = 'http://127.0.0.1:8097'
 NAV_POINTS_FILE = os.path.join(MAPS_ROOT, 'nav_points.json')
 
 ERROR_TEXT = {
@@ -373,19 +374,39 @@ class NavNode(Node):
         except urllib.error.URLError as error:
             raise RuntimeError('Cartographer web api unreachable: %s' % error.reason)
 
-    def mapping_start(self):
-        status = self.cart_request('GET', '/status')
-        if not status.get('mapping'):
+    def mgr_request(self, method, path):
+        request = urllib.request.Request(MGR_API + path, method=method)
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                raw = response.read().decode() or '{}'
+                return json.loads(raw)
+        except urllib.error.HTTPError as error:
+            raw = error.read().decode() or error.reason
             try:
-                self.cart_request('POST', '/start')
-            except RuntimeError:
-                self.cart_request('POST', '/restart')
-                self.state.set('mapping', True)
-                return {'ok': True, 'mapping': True, 'restarting': True}
-            self.state.set('mapping', True)
-            return {'ok': True, 'mapping': True}
+                message = json.loads(raw).get('error', raw)
+            except Exception:
+                message = raw
+            raise RuntimeError(message)
+        except urllib.error.URLError as error:
+            raise RuntimeError('Cartographer manager unreachable: %s' % error.reason)
+
+    def mapping_start(self):
+        # 先切到建图容器（管理器会自动停掉定位容器）
+        self.mgr_request('POST', '/mapping')
+        status = None
+        deadline = time.time() + 25.0
+        while time.time() < deadline:
+            try:
+                status = self.cart_request('GET', '/status')
+                break
+            except Exception:
+                time.sleep(0.5)
+        if status is None:
+            raise RuntimeError('Cartographer web api unreachable')
+        if not status.get('mapping'):
+            self.cart_request('POST', '/start')
         self.state.set('mapping', True)
-        return {'ok': True, 'mapping': True, 'already': True}
+        return {'ok': True, 'mapping': True}
 
     def mapping_save(self, name=None):
         name = re.sub(r'[^A-Za-z0-9._-]+', '_', (name or '').strip())
@@ -393,6 +414,10 @@ class NavNode(Node):
             name = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
         result = self.cart_request('POST', '/save?' + urllib.parse.urlencode({'name': name}))
         self.state.set('mapping_saved', result.get('dir'))
+        # 保存后自动切回定位并加载新图 → 建完立即能导航
+        self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
+        self.state.set('mapping', False)
+        self.state.set('current_map', name)
         return {'ok': True, 'name': result.get('name', name), 'dir': result.get('dir')}
 
     def maps_list(self):
@@ -470,6 +495,9 @@ class NavNode(Node):
         return {'ok': True, 'name': name}
 
     def maps_switch(self, name):
+        # 切换 Cartographer 定位到该地图，再更新网页显示
+        self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
+        self.state.set('mapping', False)
         return self.load_static_map(name)
 
     def maps_delete(self, name):
