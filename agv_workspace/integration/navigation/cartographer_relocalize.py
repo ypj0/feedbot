@@ -102,35 +102,20 @@ class CartographerRelocalizer(Node):
         elif not charging:
             self.seeded_for_charge = False
 
-    def resolve_pose(self):
-        """返回 (x, y, yaw, source) 或 None。"""
-        if 0 < self.charge_status < 5 and self.docked_pose is not None:
-            return self.docked_pose[0], self.docked_pose[1], self.docked_pose[2], 'docked'
-        if self.scan is None or self.map is None:
-            return None
-        from scan_match import search
-        best = search(self.map, self.scan, self.laser_max_range)
-        if best is None:
-            return None
-        score, x, y, yaw = best
-        if score > self.accept_score:
-            raise RuntimeError('score too high %.3f > %.2f' % (score, self.accept_score))
-        return x, y, yaw, 'scan'
-
     def reloc_cb(self, req, resp):
         try:
-            pose = self.resolve_pose()
-            if pose is None:
-                resp.success = False
-                resp.message = 'no scan/map data'
+            # 充电/回桩：用 docked_pose 精确播种（确定性，最快）
+            if 0 < self.charge_status < 5 and self.docked_pose is not None:
+                x, y, yaw = self.docked_pose
+                self.publish_pose(x, y, yaw)
+                resp.success = True
+                resp.message = '%.3f,%.3f,%.2f (docked)' % (x, y, math.degrees(yaw))
+                self.get_logger().info('relocalized from docked pose')
                 return resp
-            x, y, yaw, source = pose
-            self.publish_pose(x, y, yaw)
+            # 桩外：Cartographer 纯定位已放宽全局搜索窗，会自动全图重定位
             resp.success = True
-            resp.message = '%.3f,%.3f,%.2f (%s)' % (x, y, math.degrees(yaw), source)
-            self.get_logger().info(
-                'relocalized to (%.3f, %.3f, %.2f) via %s'
-                % (x, y, math.degrees(yaw), source))
+            resp.message = 'Cartographer global localization running'
+            self.get_logger().info('relocalize: rely on Cartographer global localization')
         except Exception as e:
             resp.success = False
             resp.message = str(e)

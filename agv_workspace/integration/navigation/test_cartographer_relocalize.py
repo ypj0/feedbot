@@ -51,17 +51,23 @@ class CartographerRelocalizerTest(unittest.TestCase):
 
     def test_docked_pose_wins_when_charging(self):
         node = make_node(self.module, charge=1, docked=[1.0, 2.0, 0.5])
-        self.assertEqual(node.resolve_pose(), (1.0, 2.0, 0.5, 'docked'))
+        node.publish_pose = Mock()
+        node.get_logger = Mock(return_value=Mock())
+        resp = types.SimpleNamespace(success=False, message='')
+        node.reloc_cb(None, resp)
+        self.assertTrue(resp.success)
+        self.assertIn('docked', resp.message)
+        node.publish_pose.assert_called_once_with(1.0, 2.0, 0.5)
 
-    def test_no_scan_or_map_returns_none(self):
+    def test_not_charging_returns_global(self):
         node = make_node(self.module, charge=0)
-        self.assertIsNone(node.resolve_pose())
-
-    def test_scan_match_used_when_not_charging(self):
-        node = make_node(self.module, charge=0, scan=object(), map_msg=object())
-        fake = types.SimpleNamespace(search=lambda m, s, r: (0.1, 3.0, 4.0, 0.2))
-        with patch.dict(sys.modules, {'scan_match': fake}):
-            self.assertEqual(node.resolve_pose(), (3.0, 4.0, 0.2, 'scan'))
+        node.publish_pose = Mock()
+        node.get_logger = Mock(return_value=Mock())
+        resp = types.SimpleNamespace(success=False, message='')
+        node.reloc_cb(None, resp)
+        self.assertTrue(resp.success)
+        self.assertIn('global', resp.message)
+        node.publish_pose.assert_not_called()
 
     def test_charge_detection_auto_seeds_docked_pose_once(self):
         node = make_node(self.module, charge=0, docked=[1.0, 2.0, 0.5])
