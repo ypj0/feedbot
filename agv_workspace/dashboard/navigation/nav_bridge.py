@@ -463,6 +463,7 @@ class NavNode(Node):
         self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
         self.state.set('mapping', False)
         self.set_current_map(name)
+        self.load_nav_map(name)
         self.auto_relocalize()
         return {'ok': True, 'name': result.get('name', name), 'dir': result.get('dir')}
 
@@ -473,6 +474,24 @@ class NavNode(Node):
                 if os.path.exists(os.path.join(MAPS_ROOT, entry, 'feedbot.yaml')):
                     maps.append({'name': entry})
         return {'maps': maps}
+
+    def load_nav_map(self, name):
+        """切换 Nav2 map_server 到指定地图，保持与 Cartographer 定位坐标系一致。"""
+        name = (name or '').strip()
+        if not name:
+            return
+        if not self.load_map_client.wait_for_service(timeout_sec=5.0):
+            raise RuntimeError('map_server load_map service unavailable')
+        request = LoadMap.Request()
+        request.map_url = os.path.join(MAPS_ROOT, name, 'feedbot.yaml')
+        future = self.load_map_client.call_async(request)
+        deadline = time.time() + 10.0
+        while time.time() < deadline and not future.done():
+            time.sleep(0.05)
+        if not future.done():
+            raise RuntimeError('map_server load_map timeout')
+        if not future.result().result:
+            raise RuntimeError('map_server load_map failed')
 
     def load_static_map(self, name):
         name = re.sub(r'[^A-Za-z0-9._-]+', '_', (name or '').strip())
@@ -551,6 +570,7 @@ class NavNode(Node):
                 current = ''
         if name != current:
             self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
+            self.load_nav_map(name)
             self.state.set('mapping', False)
             self.auto_relocalize()
         return self.load_static_map(name)

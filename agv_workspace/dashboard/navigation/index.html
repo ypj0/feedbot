@@ -259,7 +259,6 @@ function draw(){
     ctx.restore();
   }
   drawNavPoints(T);
-  drawDock(T);
   if(current&&current.pose)drawCar(current.pose,T,false);
 }
 
@@ -317,17 +316,6 @@ function drawNavPoints(T){
     ctx.fillStyle='#13202e';ctx.font='11px system-ui,sans-serif';
     ctx.fillText(p.name,x+7,y+3);
   });
-}
-
-function drawDock(T){
-  if(current&&current.mapping)return;
-  const dp=current&&current.docked_pose;
-  if(!dp||dp.x==null||dp.y==null)return;
-  const x=T.px(dp.x),y=T.py(dp.y);
-  ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.fillStyle='#1f9d61';
-  ctx.beginPath();ctx.rect(x-6,y-9,12,18);ctx.fill();ctx.stroke();
-  ctx.fillRect(x-2,y-12,4,3);
-  ctx.fillStyle='#fff';ctx.fillRect(x-3,y-3,6,6);
 }
 
 function worldFromEvent(e){
