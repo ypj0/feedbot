@@ -67,8 +67,15 @@ class CartographerRelocalizer(Node):
         self.get_logger().info('cartographer relocalizer ready (/relocalize)')
 
     def load_docked_pose(self):
+        name = ''
         try:
-            cfg = json.loads(DOCK_CONFIG.read_text(encoding='utf-8'))
+            name = Path('/opt/feedbot-maps/current_map.txt').read_text().strip()
+        except Exception:
+            pass
+        path = (Path('/opt/feedbot-maps') / name / 'charge_dock_config.json'
+                if name else DOCK_CONFIG)
+        try:
+            cfg = json.loads(path.read_text(encoding='utf-8'))
         except Exception:
             self.docked_pose = None
             return

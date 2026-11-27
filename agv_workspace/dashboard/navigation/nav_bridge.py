@@ -607,8 +607,19 @@ class NavNode(Node):
             self.load_static_map(name)
         return {'ok': True, 'mapping': False}
 
+    def dock_config_path(self):
+        name = (getattr(self.state, 'current_map', None) or '').strip()
+        if not name:
+            try:
+                name = open(os.path.join(MAPS_ROOT, 'current_map.txt')).read().strip()
+            except Exception:
+                name = ''
+        if name:
+            return os.path.join(MAPS_ROOT, name, 'charge_dock_config.json')
+        return os.path.join(MAPS_ROOT, 'charge_dock_config.json')
+
     def load_dock_state(self):
-        path = os.path.join(MAPS_ROOT, 'charge_dock_config.json')
+        path = self.dock_config_path()
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 cfg = json.load(f)
@@ -636,7 +647,8 @@ class NavNode(Node):
             'pre_dock': info['pre_dock'],
             'template': info['template'],
         }
-        path = os.path.join(MAPS_ROOT, 'charge_dock_config.json')
+        path = self.dock_config_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         tmp = path + '.tmp'
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(cfg, f, ensure_ascii=False)
@@ -655,7 +667,7 @@ class NavNode(Node):
         if not ok:
             raise RuntimeError(msg)
         info = json.loads(msg)
-        path = os.path.join(MAPS_ROOT, 'charge_dock_config.json')
+        path = self.dock_config_path()
         cfg = {}
         try:
             with open(path, 'r', encoding='utf-8') as f:
@@ -663,6 +675,7 @@ class NavNode(Node):
         except Exception:
             cfg = {}
         cfg['docked_pose'] = info['docked_pose']
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         tmp = path + '.tmp'
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(cfg, f, ensure_ascii=False)

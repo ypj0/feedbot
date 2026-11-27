@@ -157,9 +157,23 @@ class ChargeDockNode(Node):
 
         self.load_dock()
 
+    def current_map_name(self):
+        try:
+            with open('/opt/feedbot-maps/current_map.txt', 'r') as f:
+                return f.read().strip() or None
+        except Exception:
+            return None
+
+    def dock_config_path(self):
+        name = self.current_map_name()
+        if name:
+            return '/opt/feedbot-maps/%s/charge_dock_config.json' % name
+        return self.cfg_path
+
     def load_dock(self):
         try:
-            with open(self.cfg_path, 'r', encoding='utf-8') as f:
+            path = self.dock_config_path()
+            with open(path, 'r', encoding='utf-8') as f:
                 cfg = json.load(f)
             dock = cfg.get('dock')
             if dock and all(k in dock for k in ('x', 'y', 'yaw')):
@@ -193,7 +207,7 @@ class ChargeDockNode(Node):
                 self.docked_pose = None
                 self.get_logger().warn('charge dock config has no docked pose')
         except FileNotFoundError:
-            self.get_logger().warn('charge dock config not found: %s' % self.cfg_path)
+            self.get_logger().warn('charge dock config not found: %s' % self.dock_config_path())
         except Exception as e:
             self.get_logger().error('load dock config failed: %s' % e)
 
@@ -347,9 +361,11 @@ class ChargeDockNode(Node):
                     'pre_dock': {'x': self.pre_dock[0], 'y': self.pre_dock[1],
                                  'yaw': self.pre_dock[2]},
                 }
-                with open(self.cfg_path, 'w', encoding='utf-8') as f:
+                path = self.dock_config_path()
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, 'w', encoding='utf-8') as f:
                     json.dump(cfg, f, ensure_ascii=False)
-                self.get_logger().info('dock config persisted to %s' % self.cfg_path)
+                self.get_logger().info('dock config persisted to %s' % path)
             except Exception as e:
                 self.get_logger().error('persist dock config failed: %s' % e)
         else:
