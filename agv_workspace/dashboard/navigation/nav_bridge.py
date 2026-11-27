@@ -283,6 +283,17 @@ class NavNode(Node):
             time.sleep(0.02)
         raise RuntimeError('relocalize service timeout')
 
+    def auto_relocalize(self):
+        """切换/保存地图后自动重定位（后台线程，避免阻塞网页）。"""
+        def _run():
+            time.sleep(6.0)
+            try:
+                result = self.relocalize()
+                self.get_logger().info('auto relocalize done: %s' % result)
+            except Exception as error:
+                self.get_logger().warn('auto relocalize failed: %s' % error)
+        threading.Thread(target=_run, daemon=True).start()
+
     def navpoints_file(self):
         # 建图中：新图还没有导航点
         if getattr(self.state, 'mapping', False):
@@ -446,6 +457,7 @@ class NavNode(Node):
         self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
         self.state.set('mapping', False)
         self.set_current_map(name)
+        self.auto_relocalize()
         return {'ok': True, 'name': result.get('name', name), 'dir': result.get('dir')}
 
     def maps_list(self):
@@ -523,9 +535,18 @@ class NavNode(Node):
         return {'ok': True, 'name': name}
 
     def maps_switch(self, name):
-        # 切换 Cartographer 定位到该地图，再更新网页显示
-        self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
-        self.state.set('mapping', False)
+        # 同一张图：不重启定位，只刷新显示；不同图才切 Cartographer 定位。
+        name = (name or '').strip()
+        current = (getattr(self.state, 'current_map', None) or '').strip()
+        if not current:
+            try:
+                current = open(os.path.join(MAPS_ROOT, 'current_map.txt')).read().strip()
+            except Exception:
+                current = ''
+        if name != current:
+            self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
+            self.state.set('mapping', False)
+            self.auto_relocalize()
         return self.load_static_map(name)
 
     def maps_delete(self, name):
