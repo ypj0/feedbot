@@ -111,6 +111,9 @@ class CartographerRelocalizer(Node):
 
     def reloc_cb(self, req, resp):
         try:
+            # 每次重定位都重读当前地图配置：建图保存后 current_map.txt 已更新，
+            # 这里立即用新地图的 docked_pose 播种，而不是继续用进程启动时的旧值。
+            self.load_docked_pose()
             # 充电/回桩：用 docked_pose 精确播种（确定性，最快）
             if 0 < self.charge_status < 5 and self.docked_pose is not None:
                 x, y, yaw = self.docked_pose

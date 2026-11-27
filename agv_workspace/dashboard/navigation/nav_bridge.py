@@ -39,6 +39,7 @@ MAPS_ROOT = '/opt/feedbot-maps'
 CART_API = 'http://127.0.0.1:8099'
 MGR_API = 'http://127.0.0.1:8097'
 NAV_POINTS_FILE = os.path.join(MAPS_ROOT, 'nav_points.json')
+PENDING_DOCK_FILE = os.path.join(MAPS_ROOT, '.mapping_dock_config.json')
 
 ERROR_TEXT = {
     200: '未知错误',
@@ -154,6 +155,7 @@ class NavNode(Node):
         self.auto_charge_triggered = False
         self.auto_charge_retry_at = 0.0
         self.dock_status_at = 0
+        self.docked_charge_since = None
         self.route_active = False
         self.route_points = []
         self.route_index = 0
@@ -436,6 +438,16 @@ class NavNode(Node):
             raise RuntimeError('Cartographer manager unreachable: %s' % error.reason)
 
     def mapping_start(self):
+        # 新图开始：清掉上一次建图残留的 pending 充电点/初始点
+        try:
+            if os.path.exists(PENDING_DOCK_FILE):
+                os.remove(PENDING_DOCK_FILE)
+        except OSError:
+            pass
+        self.state.set('dock', None)
+        self.state.set('pre_dock', None)
+        self.state.set('docked_pose', None)
+        self.docked_charge_since = None
         # 先切到建图容器（管理器会自动停掉定位容器）
         self.mgr_request('POST', '/mapping')
         status = None
@@ -457,12 +469,39 @@ class NavNode(Node):
         name = re.sub(r'[^A-Za-z0-9._-]+', '_', (name or '').strip())
         if not name:
             name = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+        # 保存前守卫：充电点必须已完成设置，初始点必须已通过上桩自动建立。
+        pending = self._read_pending_dock()
+        dock = pending.get('dock')
+        pre_dock = pending.get('pre_dock')
+        template = pending.get('template')
+        if not (dock and pre_dock and template and template.get('points')):
+            raise RuntimeError('请先完成“设置充电桩”后再保存地图')
+        if not pending.get('docked_pose'):
+            raise RuntimeError('请先上桩，系统会自动建立初始点后再保存地图')
         result = self.cart_request('POST', '/save?' + urllib.parse.urlencode({'name': name}))
+        # 地图已生成：把建图期标定的充电点/初始点迁移到新地图目录，随地图持久化。
+        map_dir = os.path.join(MAPS_ROOT, name)
+        os.makedirs(map_dir, exist_ok=True)
+        dock_path = os.path.join(map_dir, 'charge_dock_config.json')
+        tmp = dock_path + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(pending, f, ensure_ascii=False)
+        os.replace(tmp, dock_path)
+        try:
+            os.remove(PENDING_DOCK_FILE)
+        except OSError:
+            pass
         self.state.set('mapping_saved', result.get('dir'))
         # 保存后自动切回定位并加载新图 → 建完立即能导航
         self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
         self.state.set('mapping', False)
         self.set_current_map(name)
+        # 让回充节点重新加载新地图的充电点/初始点
+        try:
+            self.call_trigger(self.dock_reload_client, timeout=5.0,
+                              service_name='dock reload')
+        except Exception:
+            pass
         self.load_nav_map(name)
         self.auto_relocalize()
         return {'ok': True, 'name': result.get('name', name), 'dir': result.get('dir')}
@@ -570,6 +609,9 @@ class NavNode(Node):
             except Exception:
                 current = ''
         if name != current:
+            # 切图会重定位，必须在上桩充电状态完成，避免桩外猜测位姿。
+            if not (0 < getattr(self, 'charge_status', 0) < 5):
+                raise RuntimeError('切换地图必须在充电桩上完成，请先上桩充电')
             self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
             self.load_nav_map(name)
             self.state.set('mapping', False)
@@ -608,6 +650,10 @@ class NavNode(Node):
         return {'ok': True, 'mapping': False}
 
     def dock_config_path(self):
+        # 建图期间新地图尚未命名，充电点/初始点先写入 pending 文件，
+        # 保存地图成功后再迁移到新地图目录，避免污染旧地图配置。
+        if getattr(self.state, 'mapping', False):
+            return PENDING_DOCK_FILE
         name = (getattr(self.state, 'current_map', None) or '').strip()
         if not name:
             try:
@@ -617,6 +663,13 @@ class NavNode(Node):
         if name:
             return os.path.join(MAPS_ROOT, name, 'charge_dock_config.json')
         return os.path.join(MAPS_ROOT, 'charge_dock_config.json')
+
+    def _read_pending_dock(self):
+        try:
+            with open(PENDING_DOCK_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return {}
 
     def load_dock_state(self):
         path = self.dock_config_path()
@@ -855,6 +908,7 @@ class NavNode(Node):
     def charge_status_tick(self):
         """以 MCU 充电状态为准刷新 UI 状态（重启后也能正确显示充电中）。"""
         charge = getattr(self, 'charge_status', 0)
+        self.mapping_docked_tick(charge)
         status = self.state.status
         if charge > 0:
             if status in ('navigating', 'undocking'):
@@ -866,6 +920,33 @@ class NavNode(Node):
             if status == 'charging':
                 self.state.set('status', 'idle')
                 self.state.set('nav_error', None)
+
+    def mapping_docked_tick(self, charge):
+        """建图期间上桩并稳定充电后，自动记录初始点 docked_pose。"""
+        if not getattr(self.state, 'mapping', False):
+            self.docked_charge_since = None
+            return
+        if getattr(self.state, 'docked_pose', None) is not None:
+            return
+        if not (0 < charge < 5):
+            self.docked_charge_since = None
+            return
+        now = time.time()
+        if self.docked_charge_since is None:
+            self.docked_charge_since = now
+            return
+        if now - self.docked_charge_since < 2.0:
+            return
+        self.docked_charge_since = None
+        threading.Thread(target=self._auto_calibrate_docked, daemon=True).start()
+
+    def _auto_calibrate_docked(self):
+        try:
+            result = self.dock_calibrate_docked()
+            self.get_logger().info('mapping auto docked pose recorded: %s' % result)
+        except Exception as error:
+            self.get_logger().warn('mapping auto docked pose failed: %s' % error)
+            self.docked_charge_since = None
 
     def preview(self, x, y, yaw_goal):
         if not self.path_client.wait_for_server(timeout_sec=5):
