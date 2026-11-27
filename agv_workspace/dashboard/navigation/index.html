@@ -411,7 +411,9 @@ function renderStatus(){
       veh.push(['电机',BOOL.motor_free&&BOOL.motor_free[v.motor_free]||v.motor_free||'-']);
       veh.push(['充电',BOOL.charge&&BOOL.charge[v.charge]||v.charge||'-']);
       veh.push(['急停',BOOL.emergency&&BOOL.emergency[v.emergency]||v.emergency||'-']);
-      veh.push(['电源',v.power||'-']);
+      const powerVal=v.power!=null&&v.power!==''?parseInt(v.power):null;
+      const powerColor=powerVal==null?'#92a0af':(powerVal<20?'#d84d45':(powerVal<50?'#d3a226':'#1f9d61'));
+      veh.push(['电池电量', powerVal!=null ? '<span style="color:'+powerColor+';font-weight:700">'+powerVal+'%</span>' : '-']);
     }else if(name.includes('ltr2')){
       veh.push(['雷达频率',v.frame_rate_hz?(+v.frame_rate_hz).toFixed(1)+'Hz':'-']);
       veh.push(['雷达状态',v.state||'-']);
