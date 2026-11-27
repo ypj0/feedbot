@@ -283,20 +283,48 @@ class NavNode(Node):
             time.sleep(0.02)
         raise RuntimeError('relocalize service timeout')
 
+    def navpoints_file(self):
+        # 建图中：新图还没有导航点
+        if getattr(self.state, 'mapping', False):
+            return None
+        name = (getattr(self.state, 'current_map', None) or '').strip()
+        if not name:
+            try:
+                name = open(os.path.join(MAPS_ROOT, 'current_map.txt')).read().strip()
+            except Exception:
+                name = ''
+        if name:
+            return os.path.join(MAPS_ROOT, name, 'nav_points.json')
+        return os.path.join(MAPS_ROOT, 'nav_points.json')
+
+    def set_current_map(self, name):
+        name = (name or '').strip()
+        self.state.set('current_map', name)
+        try:
+            with open(os.path.join(MAPS_ROOT, 'current_map.txt'), 'w') as handle:
+                handle.write(name)
+        except Exception:
+            pass
+
     def navpoints_load(self):
-        if not os.path.exists(NAV_POINTS_FILE):
+        path = self.navpoints_file()
+        if path is None or not os.path.exists(path):
             return []
         try:
-            data = json.load(open(NAV_POINTS_FILE, 'r'))
+            data = json.load(open(path, 'r'))
             return data if isinstance(data, list) else []
         except Exception:
             return []
 
     def navpoints_save(self, points):
-        tmp = NAV_POINTS_FILE + '.tmp'
+        path = self.navpoints_file()
+        if path is None:
+            return
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + '.tmp'
         with open(tmp, 'w') as handle:
             json.dump(points, handle)
-        os.replace(tmp, NAV_POINTS_FILE)
+        os.replace(tmp, path)
 
     def navpoint_add(self, name):
         name = re.sub(r'[^A-Za-z0-9._\-\u4e00-\u9fff]+', '_', (name or '').strip())
@@ -417,7 +445,7 @@ class NavNode(Node):
         # 保存后自动切回定位并加载新图 → 建完立即能导航
         self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
         self.state.set('mapping', False)
-        self.state.set('current_map', name)
+        self.set_current_map(name)
         return {'ok': True, 'name': result.get('name', name), 'dir': result.get('dir')}
 
     def maps_list(self):
@@ -491,7 +519,7 @@ class NavNode(Node):
         self.state.set('map', dict(
             width=width, height=height, resolution=resolution,
             origin=[origin[0], origin[1]], data=data))
-        self.state.set('current_map', name)
+        self.set_current_map(name)
         return {'ok': True, 'name': name}
 
     def maps_switch(self, name):
