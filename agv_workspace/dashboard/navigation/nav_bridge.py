@@ -490,8 +490,9 @@ class NavNode(Node):
             time.sleep(0.05)
         if not future.done():
             raise RuntimeError('map_server load_map timeout')
-        if not future.result().result:
-            raise RuntimeError('map_server load_map failed')
+        result_code = future.result().result
+        if result_code != 0:
+            raise RuntimeError('map_server load_map failed: code %d' % result_code)
 
     def load_static_map(self, name):
         name = re.sub(r'[^A-Za-z0-9._-]+', '_', (name or '').strip())
