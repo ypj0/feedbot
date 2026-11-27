@@ -2,8 +2,16 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta name="theme-color" content="#13202e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FeedBot">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>FeedBot 控制台</title>
 <style>
 :root{--bg:#f2f5f9;--card:#fff;--bd:#d7e0ea;--t1:#13202e;--t2:#556374;--t3:#92a0af;--blue:#246bdb;--green:#1f9d61;--red:#d84d45;--yel:#d3a226}
@@ -51,6 +59,19 @@ canvas{display:block;width:100%;height:100%}
 .angle-v{font-size:38px;font-weight:800;font-family:monospace;color:var(--blue)}
 .angle-u{font-size:13px;color:var(--t3);margin-left:3px}
 .goal-info{font-size:11px;color:var(--t2);font-family:monospace;line-height:1.6;word-break:break-all}
+@media (max-width:768px){
+  .hdr{height:46px;padding:0 10px}
+  .hdr-l{gap:8px}
+  .hdr-l b{font-size:13px}
+  .conn{padding:4px 9px;font-size:11px;gap:5px}
+  .badge{padding:5px 10px;font-size:11px}
+  .app{grid-template-columns:1fr;grid-template-rows:minmax(0,60vh) minmax(0,40vh);height:calc(100% - 46px)}
+  .map-area{order:1}
+  .rpanel{order:2;border-left:none;border-top:1px solid var(--bd);padding:10px}
+  .tab{padding:11px 0;font-size:13px}
+  .btn{height:40px;font-size:13px;padding:0 14px}
+  .sec{padding:12px}
+}
 </style>
 </head>
 <body>

@@ -9,6 +9,15 @@ from urllib.error import HTTPError, URLError
 
 ROOT = Path(__file__).resolve().parent
 
+STATIC_FILES = {
+    '/': ('index.html', 'text/html; charset=utf-8'),
+    '/index.html': ('index.html', 'text/html; charset=utf-8'),
+    '/manifest.json': ('manifest.json', 'application/manifest+json; charset=utf-8'),
+    '/icon.svg': ('icon.svg', 'image/svg+xml'),
+    '/icon-192.png': ('icon-192.png', 'image/png'),
+    '/icon-512.png': ('icon-512.png', 'image/png'),
+}
+
 
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
@@ -49,10 +58,12 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         static_path = self.path.split('?', 1)[0]
-        if static_path in ('/', '/index.html'):
-            body = (ROOT / 'index.html').read_bytes()
+        static = STATIC_FILES.get(static_path)
+        if static:
+            filename, content_type = static
+            body = (ROOT / filename).read_bytes()
             self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Type', content_type)
             self.cors_headers()
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Cache-Control', 'no-store')
