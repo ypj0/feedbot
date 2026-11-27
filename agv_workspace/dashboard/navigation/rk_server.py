@@ -1,12 +1,17 @@
-"""RK 导航网页代理：静态页面 + 转发 GET/POST /api/* 到车机 10.7.5.88:8098。
+"""RK 导航网页代理：静态页面 + 转发 GET/POST /api/* 到车机 nav_bridge。
 /api/stream 是 SSE 长连接，逐块流式转发；其余接口一次性转发。"""
 import json
 from pathlib import Path
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 ROOT = Path(__file__).resolve().parent
+
+
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -19,7 +24,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
 
     def proxy(self, method, data=b''):
-        req = Request('http://10.7.5.88:8098' + self.path, data=data,
+        req = Request('http://127.0.0.1:8098' + self.path, data=data,
                       headers={'Content-Type': 'application/json'}, method=method)
         try:
             with urlopen(req, timeout=20) as resp:
@@ -57,7 +62,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def stream_proxy(self):
-        req = Request('http://10.7.5.88:8098/api/stream', headers={'Accept': 'text/event-stream'})
+        req = Request('http://127.0.0.1:8098/api/stream', headers={'Accept': 'text/event-stream'})
         try:
             upstream = urlopen(req, timeout=None)
         except (HTTPError, URLError) as e:
@@ -103,8 +108,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = ThreadingHTTPServer(('127.0.0.1', 8088), Handler)
-    print('nav web at 127.0.0.1:8088')
+    # 监听所有网口：手机/电脑连车机路由器 WiFi 后可直接访问该端口。
+    server = ThreadingHTTPServer(('0.0.0.0', 8088), Handler)
+    print('nav web at 0.0.0.0:8088', flush=True)
     server.serve_forever()
 
 
