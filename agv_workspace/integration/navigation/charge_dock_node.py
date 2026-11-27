@@ -92,6 +92,7 @@ class ChargeDockNode(Node):
         self.dock = None          # [x, y, yaw]
         self.pre_dock = None      # [x, y, yaw]
         self.docked_pose = None   # 初始点：车实际停靠桩上的地图位姿 [x, y, yaw]
+        self.loaded_map_name = None
         self.robot = None         # [x, y, yaw]
         self.charge_status = 0
         self.scan = None          # 最新 LaserScan
@@ -154,6 +155,7 @@ class ChargeDockNode(Node):
         self.srv_reload = self.create_service(Trigger, '/charge_dock/reload', self.reload_cb)
         self.srv_get_dock = self.create_service(Trigger, '/charge_dock/get_dock', self.get_dock_cb)
         self.create_timer(1.0 / self.freq, self.control_tick)
+        self.create_timer(1.0, self.map_reload_tick)
 
         self.load_dock()
 
@@ -171,6 +173,14 @@ class ChargeDockNode(Node):
         return self.cfg_path
 
     def load_dock(self):
+        # 先清空旧图状态并记录当前地图，避免加载失败或新图无配置时
+        # 残留上一张地图的 dock/pre_dock/template/docked_pose。
+        self.loaded_map_name = self.current_map_name()
+        self.dock = None
+        self.pre_dock = None
+        self.template = None
+        self.template_pose = None
+        self.docked_pose = None
         try:
             path = self.dock_config_path()
             with open(path, 'r', encoding='utf-8') as f:
@@ -210,6 +220,15 @@ class ChargeDockNode(Node):
             self.get_logger().warn('charge dock config not found: %s' % self.dock_config_path())
         except Exception as e:
             self.get_logger().error('load dock config failed: %s' % e)
+
+    def map_reload_tick(self):
+        """地图切换后 current_map.txt 会变化；自动重载当前地图的充电点/初始点。"""
+        name = self.current_map_name()
+        if name != self.loaded_map_name:
+            self.get_logger().info(
+                'current map changed: %s -> %s, reloading dock config'
+                % (self.loaded_map_name, name))
+            self.load_dock()
 
     def pose_cb(self, msg):
         p = msg.pose.pose

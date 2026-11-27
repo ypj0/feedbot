@@ -496,12 +496,6 @@ class NavNode(Node):
         self.mgr_request('POST', '/localize?' + urllib.parse.urlencode({'name': name}))
         self.state.set('mapping', False)
         self.set_current_map(name)
-        # 让回充节点重新加载新地图的充电点/初始点
-        try:
-            self.call_trigger(self.dock_reload_client, timeout=5.0,
-                              service_name='dock reload')
-        except Exception:
-            pass
         self.load_nav_map(name)
         self.auto_relocalize()
         return {'ok': True, 'name': result.get('name', name), 'dir': result.get('dir')}
@@ -618,13 +612,6 @@ class NavNode(Node):
             self.state.set('mapping', False)
         result = self.load_static_map(name)
         if changed:
-            # load_static_map 已写入 current_map.txt；此时让回充节点按新地图
-            # 重载充电点/初始点，避免继续使用上一张图残留的 dock 位姿。
-            try:
-                self.call_trigger(self.dock_reload_client, timeout=5.0,
-                                  service_name='dock reload')
-            except Exception:
-                pass
             self.auto_relocalize()
         return result
 
@@ -716,8 +703,11 @@ class NavNode(Node):
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(cfg, f, ensure_ascii=False)
         os.replace(tmp, path)
-        self.call_trigger(self.dock_reload_client, timeout=5.0,
-                          service_name='dock reload')
+        # 非建图：同一张图标定后让回充节点立即生效；建图期标定写到 pending，
+        # 保存后回充节点会随 current_map.txt 自动重载，这里不触发以免读旧图。
+        if not getattr(self.state, 'mapping', False):
+            self.call_trigger(self.dock_reload_client, timeout=5.0,
+                              service_name='dock reload')
         self.state.set('dock', info['dock'])
         self.state.set('pre_dock', info['pre_dock'])
         self.state.set('docked_pose', None)
@@ -743,8 +733,9 @@ class NavNode(Node):
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(cfg, f, ensure_ascii=False)
         os.replace(tmp, path)
-        self.call_trigger(self.dock_reload_client, timeout=5.0,
-                          service_name='dock reload')
+        if not getattr(self.state, 'mapping', False):
+            self.call_trigger(self.dock_reload_client, timeout=5.0,
+                              service_name='dock reload')
         self.state.set('docked_pose', info['docked_pose'])
         return {'docked_pose': info['docked_pose']}
 

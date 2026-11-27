@@ -47,6 +47,7 @@ class CartographerRelocalizer(Node):
         self.map = None
         self.charge_status = 0
         self.docked_pose = None
+        self.loaded_map_name = None
         self.seeded_for_charge = False
         self.load_docked_pose()
 
@@ -64,26 +65,36 @@ class CartographerRelocalizer(Node):
         self.pub_initialpose = self.create_publisher(
             PoseWithCovarianceStamped, '/initialpose', initialpose_qos)
         self.srv_reloc = self.create_service(Trigger, '/relocalize', self.reloc_cb)
+        self.create_timer(1.0, self.map_reload_tick)
         self.get_logger().info('cartographer relocalizer ready (/relocalize)')
 
-    def load_docked_pose(self):
-        name = ''
+    def _current_map_name(self):
         try:
             name = Path('/opt/feedbot-maps/current_map.txt').read_text().strip()
+            return name or None
         except Exception:
-            pass
+            return None
+
+    def load_docked_pose(self):
+        self.docked_pose = None
+        self.loaded_map_name = self._current_map_name()
+        name = self.loaded_map_name
         path = (Path('/opt/feedbot-maps') / name / 'charge_dock_config.json'
                 if name else DOCK_CONFIG)
         try:
             cfg = json.loads(path.read_text(encoding='utf-8'))
         except Exception:
-            self.docked_pose = None
             return
         dp = cfg.get('docked_pose') if isinstance(cfg, dict) else None
         if dp and all(k in dp for k in ('x', 'y', 'yaw')):
             self.docked_pose = [float(dp['x']), float(dp['y']), float(dp['yaw'])]
-        else:
-            self.docked_pose = None
+
+    def map_reload_tick(self):
+        """地图切换后 current_map.txt 会变化；自动重读当前地图的 docked_pose。"""
+        name = self._current_map_name()
+        if name != self.loaded_map_name:
+            self.get_logger().info('current map changed, reloading docked pose')
+            self.load_docked_pose()
 
     def scan_cb(self, msg):
         self.scan = msg
