@@ -160,6 +160,7 @@ class NavNode(Node):
         self.route_points = []
         self.route_index = 0
         self.create_timer(0.05, self.update)
+        self.auto_init_map()
 
 
     def scan_cb(self, msg):
@@ -300,6 +301,41 @@ class NavNode(Node):
                 self.get_logger().info('auto relocalize done: %s' % result)
             except Exception as error:
                 self.get_logger().warn('auto relocalize failed: %s' % error)
+        threading.Thread(target=_run, daemon=True).start()
+
+    def auto_init_map(self):
+        """开机自恢复：容器重启后自动加载当前地图并启动 Cartographer 定位。"""
+        def _run():
+            time.sleep(8.0)
+            name = ''
+            try:
+                name = open(os.path.join(MAPS_ROOT, 'current_map.txt')).read().strip()
+            except Exception:
+                return
+            if not name:
+                return
+            for attempt in range(10):
+                try:
+                    self.mgr_request('POST', '/localize?' +
+                                     urllib.parse.urlencode({'name': name}))
+                    break
+                except Exception as error:
+                    self.get_logger().warn(
+                        'auto init localize retry %d: %s' % (attempt + 1, error))
+                    time.sleep(2.0)
+            for attempt in range(10):
+                try:
+                    self.load_nav_map(name)
+                    break
+                except Exception as error:
+                    self.get_logger().warn(
+                        'auto init load_nav_map retry %d: %s' % (attempt + 1, error))
+                    time.sleep(2.0)
+            try:
+                self.load_static_map(name)
+            except Exception as error:
+                self.get_logger().warn('auto init load_static_map: %s' % error)
+            self.auto_relocalize()
         threading.Thread(target=_run, daemon=True).start()
 
     def navpoints_file(self):
